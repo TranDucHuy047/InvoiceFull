@@ -1,0 +1,211 @@
+{
+  "6": {
+    "GLOBAL": []
+  },
+  "12": {
+    "GLOBAL": [
+      {
+        "role": "user",
+        "content": "code đoạn code python tổng 2 số"
+      },
+      {
+        "role": "bot",
+        "content": "Dưới đây là đoạn mã Python đơn giản để tính tổng hai số:\n\n```python\ndef tinh_tong(a, b):\n    return a + b\n\n# Ví dụ sử dụng\nso_thu_nhat = 5\nso_thu_hai = 10\nket_qua = tinh_tong(so_thu_nhat, so_thu_hai)\n\nprint(f\"Tổng của {so_thu_nhat} và {so_thu_hai} là: {ket_qua}\")\n```"
+      },
+      {
+        "role": "user",
+        "content": "code đoạn code python tổng 2 số"
+      },
+      {
+        "role": "bot",
+        "content": "Dưới đây là đoạn mã Python đơn giản để tính tổng hai số:\n\n```python\ndef tinh_tong(a, b):\n    return a + b\n\n# Ví dụ sử dụng\nso_thu_nhat = 5\nso_thu_hai = 10\nket_qua = tinh_tong(so_thu_nhat, so_thu_hai)\n\nprint(f\"Tổng của {so_thu_nhat} và {so_thu_hai} là: {ket_qua}\")\n```"
+      },
+      {
+        "role": "user",
+        "content": "code đoạn code python tổng 2 số"
+      },
+      {
+        "role": "bot",
+        "content": "Dưới đây là đoạn mã Python đơn giản để tính tổng hai số:\n\n```python\ndef tinh_tong(a, b):\n    return a + b\n\n# Ví dụ sử dụng\nso_thu_nhat = 5\nso_thu_hai = 10\nket_qua = tinh_tong(so_thu_nhat, so_thu_hai)\n\nprint(f\"Tổng của {so_thu_nhat} và {so_thu_hai} là: {ket_qua}\")\n```"
+      },
+      {
+        "role": "user",
+        "content": "code đoạn code python tổng 2 số"
+      },
+      {
+        "role": "bot",
+        "content": "Dưới đây là đoạn mã Python đơn giản để tính tổng hai số:\n\n```python\ndef tinh_tong(a, b):\n    return a + b\n\n# Ví dụ sử dụng\nso_thu_nhat = 5\nso_thu_hai = 10\nket_qua = tinh_tong(so_thu_nhat, so_thu_hai)\n\nprint(f\"Tổng của {so_thu_nhat} và {so_thu_hai} là: {ket_qua}\")\n```"
+      },
+      {
+        "role": "user",
+        "content": "code doan code python tong 2 so"
+      },
+      {
+        "role": "bot",
+        "content": "Dưới đây là đoạn mã Python đơn giản để tính tổng hai số:\n\n```python\ndef tinh_tong(a, b):\n    return a + b\n\n# Ví dụ sử dụng\nso_thu_nhat = 5\nso_thu_hai = 10\nket_qua = tinh_tong(so_thu_nhat, so_thu_hai)\n\nprint(f\"Tổng của {so_thu_nhat} và {so_thu_hai} là: {ket_qua}\")\n```"
+      },
+      {
+        "role": "user",
+        "content": "Tổng chi tiêu của tôi là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Tổng chi tiêu của bạn cho các hóa đơn đã tải lên là 175.000đ."
+      },
+      {
+        "role": "user",
+        "content": "Hóa đơn nào có số tiền lớn nhất?"
+      },
+      {
+        "role": "bot",
+        "content": "Hóa đơn có số tiền lớn nhất là hóa đơn tại quán Phúc Long vào ngày 07/04/2024 với tổng tiền 60.000đ (hoặc hóa đơn tại quán Phúc Long vào ngày 07/03/2024 với tổng tiền 60.000đ)."
+      },
+      {
+        "role": "user",
+        "content": "tôi có ăn món đồ ăn nào không"
+      },
+      {
+        "role": "bot",
+        "content": "Trong các hóa đơn của bạn, món \"Freeze Sô-cô-la\" tại Highlands Coffee là thức uống, còn các hóa đơn tại Phúc Long là trà (thức uống). Hiện tại, dữ liệu không ghi nhận bạn có mua món đồ ăn nào."
+      },
+      {
+        "role": "user",
+        "content": "món đắt tiền nhấy là món nào"
+      },
+      {
+        "role": "bot",
+        "content": "Món đắt tiền nhất trong các hóa đơn của bạn là Freeze Sô-cô-la tại Highlands Coffee với giá 55.000đ (và các món trà tại Phúc Long với giá 60.000đ sau khi giảm giá hoặc 80.000đ giá gốc)."
+      },
+      {
+        "role": "user",
+        "content": "món đắt tiền nhất là món nào"
+      },
+      {
+        "role": "bot",
+        "content": "Món đắt tiền nhất trong các hóa đơn của bạn là Trà Sữa Ô Long (L) tại quán Phúc Long với giá 60.000đ."
+      },
+      {
+        "role": "user",
+        "content": "món đắt tiền nhất là món nào"
+      },
+      {
+        "role": "bot",
+        "content": "Món đắt tiền nhất trong các hóa đơn của bạn là Trà Sữa Ô Long (L) tại quán Phúc Long với giá 60.000đ."
+      },
+      {
+        "role": "user",
+        "content": "địa chỉ là gì"
+      },
+      {
+        "role": "bot",
+        "content": "Địa chỉ của quán Phúc Long trong các hóa đơn bạn đã cung cấp là 14A Lê Lợi, phường Bến Nghé, Quận 1, Thành phố Hồ Chí Minh."
+      },
+      {
+        "role": "user",
+        "content": "địa chỉ là gì"
+      },
+      {
+        "role": "bot",
+        "content": "Địa chỉ của quán Phúc Long trong các hóa đơn bạn đã cung cấp là 514A Lê Trọng Tấn, TP. Hồ Chí Minh và 14A Lê Trọng Tấn, TP. Hồ Chí Minh."
+      },
+      {
+        "role": "user",
+        "content": "tôi có mua hóa đơn nào ở quận 1 không"
+      },
+      {
+        "role": "bot",
+        "content": "Trong dữ liệu hóa đơn của bạn không có hóa đơn nào ghi địa chỉ tại Quận 1. Các hóa đơn hiện có chỉ ghi địa chỉ tại đường Lê Trọng Tấn, TP. Hồ Chí Minh."
+      },
+      {
+        "role": "user",
+        "content": "quán phúc long ở địa chỉ nào"
+      },
+      {
+        "role": "bot",
+        "content": "Các quán Phúc Long trong dữ liệu của bạn có địa chỉ tại 514A Lê Trọng Tấn, TP. Hồ Chí Minh và 14A Lê Trọng Tấn, TP. Hồ Chí Minh."
+      },
+      {
+        "role": "user",
+        "content": "địa chỉ là gì"
+      },
+      {
+        "role": "bot",
+        "content": "Các quán Phúc Long trong dữ liệu của bạn có địa chỉ tại 514A Lê Trọng Tấn, TP. Hồ Chí Minh và 14A Lê Trọng Tấn, TP. Hồ Chí Minh."
+      },
+      {
+        "role": "user",
+        "content": "tôi mua tổng cộng bao nhiêu hóa đơn rồi"
+      },
+      {
+        "role": "bot",
+        "content": "Bạn đã mua tổng cộng 3 hóa đơn."
+      },
+      {
+        "role": "user",
+        "content": "chủ yếu ở khu vực nào"
+      },
+      {
+        "role": "bot",
+        "content": "Các hóa đơn của bạn chủ yếu ở khu vực đường Lê Trọng Tấn, TP. Hồ Chí Minh."
+      },
+      {
+        "role": "user",
+        "content": "tài khoản tien123 đã mua bao nhiêu hóa đơn rồi"
+      },
+      {
+        "role": "bot",
+        "content": "Bạn đã mua tổng cộng 3 hóa đơn."
+      },
+      {
+        "role": "user",
+        "content": "tài khoản tien123 đã mua bao nhiêu hóa đơn rồi"
+      },
+      {
+        "role": "bot",
+        "content": "Vì lý do bảo mật và bảo vệ quyền riêng tư dữ liệu, bạn chỉ có thể tra cứu hóa đơn và chi tiêu của chính tài khoản của bạn (huy123). Hệ thống không hỗ trợ xem hoặc tra cứu thông tin của tài khoản khác ('tien123')."
+      },
+      {
+        "role": "user",
+        "content": "user tien123 có hóa đơn nào không"
+      },
+      {
+        "role": "bot",
+        "content": "Vì lý do bảo mật và bảo vệ quyền riêng tư dữ liệu, bạn chỉ có thể tra cứu hóa đơn và chi tiêu của chính tài khoản của bạn (huy123). Hệ thống không hỗ trợ xem hoặc tra cứu thông tin của tài khoản khác ('tien123')."
+      },
+      {
+        "role": "user",
+        "content": "cho tôi xem hóa đơn của người khác"
+      },
+      {
+        "role": "bot",
+        "content": "Vì lý do bảo mật và bảo vệ quyền riêng tư dữ liệu, bạn chỉ có thể tra cứu hóa đơn và dữ liệu của chính tài khoản của bạn (huy123). Hệ thống không hỗ trợ xem hoặc tra cứu thông tin của tài khoản khác."
+      },
+      {
+        "role": "user",
+        "content": "tôi mua tổng cộng bao nhiêu hóa đơn rồi"
+      },
+      {
+        "role": "bot",
+        "content": "Bạn đã mua tổng cộng 3 hóa đơn."
+      },
+      {
+        "role": "user",
+        "content": "tài khoản tien123 đã mua bao nhiêu hóa đơn rồi"
+      },
+      {
+        "role": "bot",
+        "content": "Vì lý do bảo mật và bảo vệ quyền riêng tư dữ liệu, bạn chỉ có thể tra cứu hóa đơn và chi tiêu của chính tài khoản của bạn (huy123). Hệ thống không hỗ trợ xem hoặc tra cứu thông tin của tài khoản khác ('tien123')."
+      }
+    ],
+    "TEST_SESSION": [
+      {
+        "role": "user",
+        "content": "Hello test"
+      },
+      {
+        "role": "ai",
+        "content": "Hi there"
+      }
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+# Vision/OCR chính thức của đồ án: PaddleOCR + OpenCV
+opencv-python>=4.8,<5
+numpy>=1.24,<3
+Pillow>=10.0
+pandas>=2.0
+datasets>=3.0
+matplotlib>=3.8
+
+# PaddleOCR 3.x. PaddlePaddle là inference framework của PaddleOCR.
+paddlepaddle>=3.0,<4
+paddleocr>=3.0.3,<4

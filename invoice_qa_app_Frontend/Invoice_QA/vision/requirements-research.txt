@@ -1,0 +1,3 @@
+# Optional cho yêu cầu môi trường/nghiên cứu Đợt 1.
+# Pipeline OCR chính thức KHÔNG dùng PyTorch; PaddleOCR chạy trên PaddlePaddle.
+torch>=2.2

@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+python-multipart
+paddleocr
+paddlepaddle
+opencv-python-headless
+weaviate-client
+httpx
+python-jose[cryptography]
+bcrypt
+pydantic
+python-dotenv

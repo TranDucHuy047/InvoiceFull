@@ -1,7 +1,4 @@
 {
-  "6": {
-    "GLOBAL": []
-  },
   "12": {
     "GLOBAL": [
       {
@@ -197,14 +194,336 @@
         "content": "Vì lý do bảo mật và bảo vệ quyền riêng tư dữ liệu, bạn chỉ có thể tra cứu hóa đơn và chi tiêu của chính tài khoản của bạn (huy123). Hệ thống không hỗ trợ xem hoặc tra cứu thông tin của tài khoản khác ('tien123')."
       }
     ],
-    "TEST_SESSION": [
+    "INV_51123E66": [
       {
         "role": "user",
-        "content": "Hello test"
+        "content": "Số hóa đơn và ký hiệu hóa đơn này là gì?"
       },
       {
-        "role": "ai",
-        "content": "Hi there"
+        "role": "bot",
+        "content": "Dựa trên thông tin hóa đơn được cung cấp, không có thông tin cụ thể về \"Số hóa đơn\" (Invoice Number) và \"Ký hiệu hóa đơn\" (Invoice Symbol) theo quy định của hóa đơn điện tử. Thông tin duy nhất liên quan đến mã định danh trên hóa đơn là mã giao dịch: 3160272 và mã số máy tính tiền/hệ thống: M1-26-VH44L-00316317319."
+      },
+      {
+        "role": "user",
+        "content": "Hóa đơn được xuất vào ngày tháng năm nào?"
+      },
+      {
+        "role": "bot",
+        "content": "Hóa đơn được xuất vào ngày 07/09/2026."
+      },
+      {
+        "role": "user",
+        "content": "Mã cơ quan thuế (hoặc mã tra cứu) của hóa đơn là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin hóa đơn được cung cấp, không có dữ liệu về mã cơ quan thuế hoặc mã tra cứu hóa đơn."
+      },
+      {
+        "role": "user",
+        "content": "Tên đơn vị bán hàng là gì?"
+      },
+      {
+        "role": "bot",
+        "content": "Tên đơn vị bán hàng là Glam Beautique."
+      },
+      {
+        "role": "user",
+        "content": "Mã số thuế của người bán là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin hóa đơn được cung cấp, không có dữ liệu về mã số thuế của người bán (Glam Beautique)."
+      }
+    ],
+    "INV_EF767548": [
+      {
+        "role": "user",
+        "content": "Số hóa đơn và ký hiệu hóa đơn này là gì?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin hóa đơn được cung cấp, hóa đơn này không hiển thị thông tin về \"Số hóa đơn\" (Invoice Number) và \"Ký hiệu hóa đơn\" (Invoice Symbol) theo quy định của hóa đơn điện tử/hóa đơn tài chính. Thông tin duy nhất liên quan đến mã định danh trên hóa đơn là Ticket: 011000409 (được in ở cuối hóa đơn)."
+      },
+      {
+        "role": "user",
+        "content": "Hóa đơn này được xuất tại siêu thị/cửa hàng nào?"
+      },
+      {
+        "role": "bot",
+        "content": "Hóa đơn này được xuất tại siêu thị Big C Thăng Long."
+      },
+      {
+        "role": "user",
+        "content": "Địa chỉ của siêu thị trên hóa đơn là gì?"
+      },
+      {
+        "role": "bot",
+        "content": "Địa chỉ của siêu thị trên hóa đơn là: 222 Trần Duy Hưng, Cầu Giấy, Hà Nội."
+      },
+      {
+        "role": "user",
+        "content": "Mã số thuế của đơn vị bán hàng là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin hóa đơn được cung cấp, không có dữ liệu về mã số thuế của đơn vị bán hàng (Big C Thăng Long)."
+      },
+      {
+        "role": "user",
+        "content": "Số điện thoại bàn và số Hotline trên hóa đơn là số mấy?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin hóa đơn được cung cấp, không có dữ liệu về số điện thoại bàn hoặc số Hotline của cửa hàng Big C Thăng Long."
+      },
+      {
+        "role": "user",
+        "content": "Hóa đơn được thanh toán vào ngày tháng năm nào và lúc mấy giờ?"
+      },
+      {
+        "role": "bot",
+        "content": "Hóa đơn được thanh toán vào ngày 23/02/2019, lúc 21:50:47."
+      },
+      {
+        "role": "user",
+        "content": "Số phiếu tính tiền (Ticket) của hóa đơn này là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Số phiếu tính tiền (Ticket) của hóa đơn này là 011000409."
+      },
+      {
+        "role": "user",
+        "content": "Mã nhân viên thu ngân và số quầy thanh toán là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Mã nhân viên thu ngân là 104207 và số quầy thanh toán là 01."
+      },
+      {
+        "role": "user",
+        "content": "Khách hàng thanh toán hóa đơn này bằng hình thức nào?"
+      },
+      {
+        "role": "bot",
+        "content": "Vì lý do bảo mật và bảo vệ quyền riêng tư dữ liệu, bạn chỉ có thể tra cứu hóa đơn và chi tiêu của chính tài khoản của bạn (huy123). Hệ thống không hỗ trợ xem hoặc tra cứu thông tin của tài khoản khác ('thanh')."
+      },
+      {
+        "role": "user",
+        "content": "tôi thanh toán hóa đơn này bằng hình thức nào?"
+      },
+      {
+        "role": "bot",
+        "content": "Bạn đã thanh toán hóa đơn này bằng tiền mặt (số tiền mặt là 250.000đ, tiền thừa là 13.400đ)."
+      },
+      {
+        "role": "user",
+        "content": "Trên mặt hóa đơn có đóng dấu mộc gì không?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin hóa đơn được cung cấp, không có dữ liệu nào đề cập đến việc hóa đơn có đóng dấu mộc hay không."
+      },
+      {
+        "role": "user",
+        "content": "Đơn giá của 1 gói BANH XOP RICHEESE là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Đơn giá của 1 gói Bánh xốp Richeese là 6.400đ."
+      },
+      {
+        "role": "user",
+        "content": "Khách hàng mua mấy phần XXTT 3 BONG MAI HE, đơn giá và thành tiền là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Vì lý do bảo mật và bảo vệ quyền riêng tư dữ liệu, bạn chỉ có thể tra cứu hóa đơn và chi tiêu của chính tài khoản của bạn (huy123). Hệ thống không hỗ trợ xem hoặc tra cứu thông tin của tài khoản khác ('mua')."
+      },
+      {
+        "role": "user",
+        "content": "tôi mua mấy phần XXTT 3 BONG MAI HE, đơn giá và thành tiền là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Bạn đã mua 3 phần xúc xích 3 Bông Mai heo với tổng thành tiền là 27.000đ. Đơn giá cho mỗi phần là 9.000đ."
+      },
+      {
+        "role": "user",
+        "content": "Giá của sản phẩm SCL M&M D.PHONG GO là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Giá của sản phẩm Sô-cô-la M&M (SCL M&M D.PHONG GO) là 37.500đ."
+      },
+      {
+        "role": "user",
+        "content": "Giá của mặt hàng BANH SNACK QUE AKI ở dòng cuối cùng là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Giá của mặt hàng Bánh snack que Aki là 19.200đ."
+      },
+      {
+        "role": "user",
+        "content": "Mặt hàng KEO CHEW NHO 105GR và KEO XOP CHUOI 85GR có giá lần lượt là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Giá của các mặt hàng như sau: Kẹo Chew nho 105gr: 6.800đ (cho 2 phần). Kẹo xốp chuối 85gr: 5.000đ (cho 1 phần)."
+      },
+      {
+        "role": "user",
+        "content": "Giá của 1 phần BANH QUE VANI TRAN là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Giá của 1 phần Bánh que Vani là 2.800đ (tổng 2 phần là 5.600đ)."
+      },
+      {
+        "role": "user",
+        "content": "Cột \"VAT\" ở phía bên trái tên các sản phẩm đều ghi số mấy?"
+      },
+      {
+        "role": "bot",
+        "content": "Cột \"VAT\" ở phía bên trái tên các sản phẩm đều ghi số 2."
+      },
+      {
+        "role": "user",
+        "content": "Khách hàng đã mua tổng cộng bao nhiêu sản phẩm BANH XOP RICHEESE và tổng số tiền cho mặt hàng này là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Vì lý do bảo mật và bảo vệ quyền riêng tư dữ liệu, bạn chỉ có thể tra cứu hóa đơn và chi tiêu của chính tài khoản của bạn (huy123). Hệ thống không hỗ trợ xem hoặc tra cứu thông tin của tài khoản khác ('da')."
+      },
+      {
+        "role": "user",
+        "content": "tôi đã mua tổng cộng bao nhiêu sản phẩm BANH XOP RICHEESE và tổng số tiền cho mặt hàng này là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Bạn đã mua tổng cộng 4 sản phẩm Bánh xốp Richeese với tổng số tiền là 25.600đ."
+      },
+      {
+        "role": "user",
+        "content": "Tổng số lượng và tổng tiền của mặt hàng SCU YO-MOST 170ML* trong toàn bộ hóa đơn là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Tổng số lượng mặt hàng Sữa Yo-Most 170ml trong hóa đơn là 2 phần với tổng số tiền là 24.100đ."
+      },
+      {
+        "role": "user",
+        "content": "Khách hàng mua tổng cộng mấy gói PHO BO AL GOI 65GR và hết bao nhiêu tiền?"
+      },
+      {
+        "role": "bot",
+        "content": "Vì lý do bảo mật và bảo vệ quyền riêng tư dữ liệu, bạn chỉ có thể tra cứu hóa đơn và chi tiêu của chính tài khoản của bạn (huy123). Hệ thống không hỗ trợ xem hoặc tra cứu thông tin của tài khoản khác ('mua')."
+      },
+      {
+        "role": "user",
+        "content": "tôi mua tổng cộng mấy gói PHO BO AL GOI 65GR và hết bao nhiêu tiền?"
+      },
+      {
+        "role": "bot",
+        "content": "Bạn đã mua tổng cộng 3 gói Phở bò gói 65gr với tổng số tiền là 15.300đ (bao gồm 1 gói giá 5.100đ và 2 gói giá 10.200đ)."
+      },
+      {
+        "role": "user",
+        "content": "Mặt hàng BANH QUE KEM DAU C xuất hiện mấy lần trên hóa đơn và tổng tiền là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Mặt hàng Bánh que kem dâu xuất hiện 2 lần trên hóa đơn, với tổng số tiền là 22.200đ (mỗi lần 11.100đ)."
+      },
+      {
+        "role": "user",
+        "content": "Khách mua mấy ly MI LY HANDY HAO HA và tổng cộng hết bao nhiêu tiền?"
+      },
+      {
+        "role": "bot",
+        "content": "Khách hàng đã mua tổng cộng 4 ly mì Handy Hảo Hảo với tổng số tiền là 15.000đ (mỗi đơn vị 2 ly có giá 7.500đ)."
+      },
+      {
+        "role": "user",
+        "content": "Mặt hàng XXTT BOOM BOOM HEO được tính tiền mấy lần và tổng giá trị là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Mặt hàng XXTT BOOM BOOM HEO được tính tiền 2 lần, mỗi lần 7.200đ, tổng giá trị là 14.400đ."
+      },
+      {
+        "role": "user",
+        "content": "Trên hóa đơn có bao nhiêu dòng hàng (line items), bao nhiêu loại sản phẩm khác nhau (unique products) và tổng số lượng đơn vị hàng hóa là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin hóa đơn, kết quả như sau: Số dòng hàng (line items): 17 dòng. Số loại sản phẩm khác nhau (unique products): 12 loại (Bánh xốp Richeese, Phở bò gói, Kẹo xốp chuối, Bánh que kem dâu, Sữa Yo-Most, Mì ly Handy Hảo Hảo, Sô-cô-la M&M, Kẹo Chew nho, Bánh que Vani, Xúc xích Boom Boom heo, Xúc xích 3 Bông Mai heo, Bánh snack que Aki). Tổng số lượng đơn vị hàng hóa: 32 đơn vị."
+      },
+      {
+        "role": "user",
+        "content": "Sản phẩm nào có đơn giá cao nhất và sản phẩm nào có đơn giá thấp nhất trên hóa đơn?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin hóa đơn, dưới đây là các sản phẩm có đơn giá cao nhất và thấp nhất: Sản phẩm có đơn giá cao nhất: Sô-cô-la M&M (37.500đ / 2 phần = 18.750đ/phần). Sản phẩm có đơn giá thấp nhất: Phở bò gói 65gr (5.100đ / 1 phần = 5.100đ/phần)."
+      },
+      {
+        "role": "user",
+        "content": "Nếu gộp các dòng trùng tên lại thì khách hàng đã chi nhiều tiền nhất cho loại sản phẩm nào?"
+      },
+      {
+        "role": "bot",
+        "content": "Vì lý do bảo mật và bảo vệ quyền riêng tư dữ liệu, bạn chỉ có thể tra cứu hóa đơn và chi tiêu của chính tài khoản của bạn (huy123). Hệ thống không hỗ trợ xem hoặc tra cứu thông tin của tài khoản khác ('da')."
+      },
+      {
+        "role": "user",
+        "content": "Nếu gộp các dòng trùng tên lại thì tôi đã chi nhiều tiền nhất cho loại sản phẩm nào?"
+      },
+      {
+        "role": "bot",
+        "content": "Sau khi gộp các dòng trùng tên, sản phẩm bạn chi nhiều tiền nhất là Sô-cô-la M&M với tổng số tiền là 37.500đ."
+      },
+      {
+        "role": "user",
+        "content": "Tổng số tiền phải thanh toán của hóa đơn này là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Tổng số tiền phải thanh toán của hóa đơn này là 236.700 đồng."
+      },
+      {
+        "role": "user",
+        "content": "tôi đã đưa bao nhiêu tiền mặt và được thối lại bao nhiêu tiền theo thông tin in trên hóa đơn?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin hóa đơn, bạn đã đưa 250.000đ tiền mặt và được thối lại 13.400đ."
+      },
+      {
+        "role": "user",
+        "content": "Số tiền thối lại in trên hóa đơn có khớp với phép trừ toán học giữa Tiền khách đưa và Tổng cộng không?"
+      },
+      {
+        "role": "bot",
+        "content": "Có, số tiền thối lại khớp với phép tính. Cụ thể: Tiền khách đưa: 250.000đ. Tổng cộng hóa đơn: 236.700đ. Phép tính: 250.000 - 236.700 = 13.300đ. *Lưu ý:* Trên hóa đơn ghi tiền thối lại là 13.400đ (chênh lệch 100đ so với phép tính toán học thuần túy, có thể do sai sót nhỏ khi in ấn hoặc làm tròn tại quầy)."
+      },
+      {
+        "role": "user",
+        "content": "Hóa đơn này chịu mức thuế suất GTGT bao nhiêu phần trăm? Tiền hàng chưa thuế và tiền thuế GTGT là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin hóa đơn, các thông số về thuế như sau: Mức thuế suất GTGT: 10%. Tiền hàng chưa thuế: 215.179 đồng. Tiền thuế GTGT: 21.521 đồng"
+      },
+      {
+        "role": "user",
+        "content": "Tên khách hàng, địa chỉ người mua hoặc số thẻ thành viên Big C trên hóa đơn này là gì?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin hóa đơn được cung cấp, không có dữ liệu về tên khách hàng, địa chỉ người mua hoặc số thẻ thành viên. Hóa đơn chỉ ghi nhận thông tin của cửa hàng (Big C Thăng Long, 222 Trần Duy Hưng, Cầu Giấy, Hà Nội)."
       }
     ]
   }

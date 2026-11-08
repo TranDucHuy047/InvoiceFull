@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import base64
 import httpx
 from dotenv import load_dotenv
 
@@ -29,12 +30,22 @@ def _get_gemini_url(model_name: str) -> str:
     """Tạo URL API cho một model cụ thể."""
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={API_KEY}"
 
-def call_llm_with_retry(prompt: str, max_retries: int = 3) -> str:
-    """Gọi Gemini API qua REST với auto-retry và auto-fallback sang model khác khi hết quota."""
+def call_llm_with_retry(prompt: str, max_retries: int = 3, image_bytes: bytes = None, mime_type: str = "image/jpeg") -> str:
+    """Gọi Gemini API qua REST với auto-retry và auto-fallback sang model khác khi hết quota. Hỗ trợ đính kèm ảnh (Multimodal)."""
     global current_model_index
     
+    parts = [{"text": prompt}]
+    if image_bytes:
+        b64_img = base64.b64encode(image_bytes).decode("utf-8")
+        parts.append({
+            "inline_data": {
+                "mime_type": mime_type or "image/jpeg",
+                "data": b64_img
+            }
+        })
+        
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
+        "contents": [{"parts": parts}],
         "generationConfig": {"temperature": 0.1}
     }
     

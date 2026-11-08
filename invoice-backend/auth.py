@@ -6,7 +6,6 @@ from jose import JWTError, jwt
 import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from pydantic import BaseModel
 
 # --- CẤU HÌNH BẢO MẬT JWT ---
 SECRET_KEY = "khoa-luan-tot-nghiep-ai-invoice-secret-key"  # Trong thực tế nên để vào file .env

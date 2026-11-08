@@ -1,6 +1,4 @@
-import os
 import sys
-import time
 import math
 import cv2
 import numpy as np
@@ -42,9 +40,15 @@ def auto_detect_and_crop_receipt(img_bgr: np.ndarray, margin: int = 15) -> tuple
     # Hóa đơn phải chiếm ít nhất 20% chiều cao và 25% chiều rộng ảnh gốc, và nhỏ hơn toàn ảnh
     if rw >= w * 0.25 and rh >= h * 0.25 and (rw < w * 0.96 or rh < h * 0.96):
         rx = max(0, rx - margin)
-        ry = max(0, ry - margin)
         rw = min(w - rx, rw + 2 * margin)
-        rh = min(h - ry, rh + 2 * margin)
+        # Nếu hóa đơn chiếm >= 45% chiều cao ảnh, giữ nguyên toàn bộ chiều dọc (ry=0, rh=h)
+        # để tránh nếp gấp hoặc bóng đổ ở đầu/cuối hóa đơn làm cắt mất Header (Mã số thuế, SĐT, Hotline) hoặc Footer (Dấu mộc)
+        if rh >= h * 0.45:
+            ry = 0
+            rh = h
+        else:
+            ry = max(0, ry - margin)
+            rh = min(h - ry, rh + 2 * margin)
         cropped = img_bgr[ry:ry+rh, rx:rx+rw]
         return cropped, True
         

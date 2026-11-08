@@ -56,12 +56,50 @@ def extract_text_from_image(image_bytes: bytes) -> str:
     if result:
         print(f"[DEBUG] result length: {len(result)}, result[0] type: {type(result[0]) if result[0] else 'None'}")
     
-    # 4. Ráp các mảnh chữ lại thành một đoạn văn bản hoàn chỉnh
+    # 4. Ráp các mảnh chữ lại thành một đoạn văn bản hoàn chỉnh theo dòng ngang (Y-coordinate Line Grouping)
     # PaddleOCR 2.x format: result[0] = list of [bbox, (text, confidence)]
     extracted_text = ""
     if result and result[0]:
+        ocr_boxes = []
         for line in result[0]:
-            extracted_text += line[1][0] + "\n"
-            
+            try:
+                bbox = line[0]
+                text = str(line[1][0]).strip()
+                if not text:
+                    continue
+                center_y = sum(pt[1] for pt in bbox) / 4.0
+                min_x = min(pt[0] for pt in bbox)
+                ocr_boxes.append({
+                    "center_y": center_y,
+                    "min_x": min_x,
+                    "text": text
+                })
+            except Exception:
+                continue
+
+        # Sắp xếp các box từ trên xuống dưới theo center_y
+        ocr_boxes.sort(key=lambda b: b["center_y"])
+
+        # Gom các box có khoảng cách center_y gần nhau (<= 12 pixel) vào cùng một dòng ngang
+        grouped_lines = []
+        for box in ocr_boxes:
+            if not grouped_lines:
+                grouped_lines.append([box])
+            else:
+                last_line = grouped_lines[-1]
+                avg_y = sum(b["center_y"] for b in last_line) / len(last_line)
+                if abs(box["center_y"] - avg_y) <= 12.0:
+                    last_line.append(box)
+                else:
+                    grouped_lines.append([box])
+
+        # Trong từng dòng ngang, sắp xếp từ trái sang phải theo min_x và nối bằng "  "
+        line_strings = []
+        for line_group in grouped_lines:
+            line_group.sort(key=lambda b: b["min_x"])
+            line_strings.append("  ".join(b["text"] for b in line_group))
+
+        extracted_text = "\n".join(line_strings)
+
     print(f"[DEBUG] Extracted {len(extracted_text.strip())} chars")
     return extracted_text.strip()

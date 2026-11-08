@@ -8,6 +8,18 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
 
+  const refreshUser = async () => {
+    try {
+      const res = await getProfile();
+      if (res.data?.data) {
+        setUser(res.data.data);
+      }
+      return res.data?.data;
+    } catch (err) {
+      return null;
+    }
+  };
+
   useEffect(() => {
     if (token) {
       getProfile()
@@ -39,7 +51,18 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, loginUser, logoutUser, setUser }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        loading,
+        loginUser,
+        logoutUser,
+        logout: logoutUser,
+        setUser,
+        refreshUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

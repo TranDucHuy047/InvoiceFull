@@ -1,193 +1,241 @@
 import { useState, useEffect } from 'react';
-import { 
-  getTrash, 
-  restoreInvoice, 
-  permanentDeleteInvoice, 
-  emptyTrash, 
-  batchDeleteTrash, 
-  batchRestoreTrash 
+import {
+  getTrashInvoices,
+  restoreInvoice,
+  permanentDeleteInvoice,
+  batchRestoreInvoices,
+  batchPermanentDeleteInvoices,
 } from '../services/api';
-import { useLanguage } from '../contexts/LanguageContext';
+import {
+  Trash2,
+  RotateCcw,
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  Receipt,
+  Calendar,
+} from 'lucide-react';
 
 export default function Trash() {
-  const [invoices, setInvoices] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [trashedInvoices, setTrashedInvoices] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
-  const [confirmModal, setConfirmModal] = useState(null); // { mode: 'single' | 'selected' | 'all', id?: string, name?: string, count?: number }
-  const [toastMessage, setToastMessage] = useState(null);
+  const [toast, setToast] = useState(null);
 
-  const { lang } = useLanguage();
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3200);
+  };
 
   useEffect(() => {
     fetchTrash();
   }, []);
 
-  const showToast = (text, type = 'success') => {
-    setToastMessage({ text, type });
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 3500);
-  };
-
   const fetchTrash = async () => {
     setLoading(true);
     try {
-      const res = await getTrash();
-      const list = Array.isArray(res.data?.data) ? res.data.data : [];
-      setInvoices(list);
-      // Clean up selectedIds to only include existing invoices
-      setSelectedIds(prev => prev.filter(id => list.some(inv => inv.invoice_id === id)));
+      const res = await getTrashInvoices();
+      const data = res.data?.data || res.data || [];
+      setTrashedInvoices(data);
+      setSelectedIds([]);
     } catch (err) {
-      console.error(err);
-      showToast(lang === 'vi' ? 'Không thể tải danh sách thùng rác' : 'Failed to load trash list', 'error');
+      console.error('Lỗi tải lịch sử xóa:', err);
+      showToast('Không thể tải danh sách lịch sử xóa', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  // Toggle selection
-  const handleToggleSelectAll = () => {
-    if (selectedIds.length === invoices.length) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(invoices.map(inv => inv.invoice_id));
-    }
-  };
-
-  const handleToggleSelectOne = (id) => {
-    setSelectedIds(prev => 
-      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+  const toggleSelectOne = (invoiceId) => {
+    setSelectedIds((prev) =>
+      prev.includes(invoiceId)
+        ? prev.filter((id) => id !== invoiceId)
+        : [...prev, invoiceId]
     );
   };
 
-  // Restore single
-  const handleRestore = async (id) => {
-    setActionLoading(true);
+  const isAllSelected =
+    trashedInvoices.length > 0 && selectedIds.length === trashedInvoices.length;
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(trashedInvoices.map((inv) => inv.invoice_id));
+    }
+  };
+
+  const handleRestore = async (invoiceId) => {
     try {
-      await restoreInvoice(id);
-      showToast(lang === 'vi' ? 'Đã khôi phục hóa đơn thành công.' : 'Invoice restored successfully.');
-      setSelectedIds(prev => prev.filter(item => item !== id));
-      await fetchTrash();
+      setActionLoading(true);
+      await restoreInvoice(invoiceId);
+      setTrashedInvoices((prev) => prev.filter((inv) => inv.invoice_id !== invoiceId));
+      setSelectedIds((prev) => prev.filter((id) => id !== invoiceId));
+      showToast('Đã khôi phục hóa đơn thành công!');
     } catch (err) {
-      console.error(err);
-      showToast(lang === 'vi' ? 'Lỗi khi khôi phục hóa đơn.' : 'Failed to restore invoice.', 'error');
+      console.error('Lỗi khôi phục:', err);
+      showToast(err.response?.data?.detail || 'Không thể khôi phục hóa đơn', 'error');
     } finally {
       setActionLoading(false);
     }
   };
 
-  // Batch restore
+  const handlePermanentDelete = async (invoiceId) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa vĩnh viễn hóa đơn này? Hành động này không thể hoàn tác.')) return;
+    try {
+      setActionLoading(true);
+      await permanentDeleteInvoice(invoiceId);
+      setTrashedInvoices((prev) => prev.filter((inv) => inv.invoice_id !== invoiceId));
+      setSelectedIds((prev) => prev.filter((id) => id !== invoiceId));
+      showToast('Đã xóa vĩnh viễn hóa đơn!');
+    } catch (err) {
+      console.error('Lỗi xóa vĩnh viễn:', err);
+      showToast(err.response?.data?.detail || 'Không thể xóa vĩnh viễn hóa đơn', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleBatchRestore = async () => {
     if (selectedIds.length === 0) return;
-    setActionLoading(true);
     try {
-      await batchRestoreTrash(selectedIds);
-      showToast(
-        lang === 'vi' 
-          ? `Đã khôi phục thành công ${selectedIds.length} hóa đơn.` 
-          : `Restored ${selectedIds.length} invoices successfully.`
+      setActionLoading(true);
+      await batchRestoreInvoices(selectedIds);
+      const count = selectedIds.length;
+      setTrashedInvoices((prev) =>
+        prev.filter((inv) => !selectedIds.includes(inv.invoice_id))
       );
       setSelectedIds([]);
-      await fetchTrash();
+      showToast(`Đã khôi phục ${count} hóa đơn thành công!`);
     } catch (err) {
-      console.error(err);
-      showToast(lang === 'vi' ? 'Lỗi khi khôi phục các hóa đơn đã chọn.' : 'Failed to restore selected invoices.', 'error');
+      console.error('Lỗi khôi phục hàng loạt:', err);
+      showToast(err.response?.data?.detail || 'Lỗi khi khôi phục hàng loạt', 'error');
     } finally {
       setActionLoading(false);
     }
   };
 
-  // Execute delete (single, selected, or all)
-  const handleExecuteDelete = async () => {
-    if (!confirmModal) return;
-    setActionLoading(true);
+  const handleBatchPermanentDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (
+      !window.confirm(
+        `Bạn có chắc chắn muốn xóa vĩnh viễn ${selectedIds.length} hóa đơn đã chọn? Hành động này không thể hoàn tác.`
+      )
+    ) {
+      return;
+    }
 
     try {
-      if (confirmModal.mode === 'single') {
-        await permanentDeleteInvoice(confirmModal.id);
-        showToast(lang === 'vi' ? 'Đã xóa vĩnh viễn hóa đơn.' : 'Invoice permanently deleted.');
-        setSelectedIds(prev => prev.filter(item => item !== confirmModal.id));
-      } else if (confirmModal.mode === 'selected') {
-        await batchDeleteTrash(selectedIds);
-        showToast(
-          lang === 'vi' 
-            ? `Đã xóa vĩnh viễn ${selectedIds.length} hóa đơn đã chọn.` 
-            : `Permanently deleted ${selectedIds.length} invoices.`
-        );
-        setSelectedIds([]);
-      } else if (confirmModal.mode === 'all') {
-        await emptyTrash();
-        showToast(lang === 'vi' ? 'Đã xóa vĩnh viễn toàn bộ thùng rác.' : 'Emptied all trash successfully.');
-        setSelectedIds([]);
-      }
-      setConfirmModal(null);
-      await fetchTrash();
+      setActionLoading(true);
+      await batchPermanentDeleteInvoices(selectedIds);
+      const count = selectedIds.length;
+      setTrashedInvoices((prev) =>
+        prev.filter((inv) => !selectedIds.includes(inv.invoice_id))
+      );
+      setSelectedIds([]);
+      showToast(`Đã xóa vĩnh viễn ${count} hóa đơn!`);
     } catch (err) {
-      console.error(err);
-      showToast(lang === 'vi' ? 'Lỗi khi xóa vĩnh viễn hóa đơn.' : 'Failed to delete permanently.', 'error');
+      console.error('Lỗi xóa vĩnh viễn hàng loạt:', err);
+      showToast(err.response?.data?.detail || 'Lỗi khi xóa vĩnh viễn hàng loạt', 'error');
     } finally {
       setActionLoading(false);
     }
   };
 
-  const isAllSelected = invoices.length > 0 && selectedIds.length === invoices.length;
+  const handleEmptyTrash = async () => {
+    if (trashedInvoices.length === 0) return;
+    const allIds = trashedInvoices.map((inv) => inv.invoice_id);
+    if (
+      !window.confirm(
+        `Bạn có chắc chắn muốn dọn sạch thùng rác (xóa vĩnh viễn toàn bộ ${allIds.length} hóa đơn)? Hành động này không thể hoàn tác.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      await batchPermanentDeleteInvoices(allIds);
+      setTrashedInvoices([]);
+      setSelectedIds([]);
+      showToast('Đã dọn sạch toàn bộ lịch sử xóa!');
+    } catch (err) {
+      console.error('Lỗi dọn sạch thùng rác:', err);
+      showToast(err.response?.data?.detail || 'Lỗi khi dọn sạch lịch sử xóa', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const getDaysRemaining = (deletedAt) => {
+    if (!deletedAt) return 30;
+    const deleted = new Date(deletedAt);
+    const now = new Date();
+    const diff = 30 - Math.floor((now - deleted) / (1000 * 60 * 60 * 24));
+    return Math.max(0, diff);
+  };
+
+  const formatAmount = (amount) => {
+    const num = Number(amount);
+    if (!num || isNaN(num)) return null;
+    return num.toLocaleString('vi-VN') + ' đ';
+  };
 
   return (
-    <div className="trash-page animate-fade-in">
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className={`trash-toast ${toastMessage.type}`}>
-          <span>{toastMessage.type === 'success' ? '✓' : '⚠️'}</span>
-          <span>{toastMessage.text}</span>
+    <div className="trash-page">
+      {toast && (
+        <div className={`trash-toast ${toast.type}`}>
+          {toast.type === 'success' ? (
+            <CheckCircle2 size={17} strokeWidth={1.75} />
+          ) : (
+            <AlertTriangle size={17} strokeWidth={1.75} />
+          )}
+          <span>{toast.message}</span>
         </div>
       )}
 
-      {/* Header */}
       <div className="trash-header">
         <div>
-          <h2>{lang === 'vi' ? 'Lịch sử xóa (Thùng rác)' : 'Trash History'}</h2>
+          <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '4px' }}>
+            Lịch sử xóa
+          </h2>
           <p className="trash-subtitle">
-            {lang === 'vi' 
-              ? 'Quản lý các hóa đơn đã xóa tạm thời. Bạn có thể chọn để khôi phục hoặc xóa hẳn vĩnh viễn.' 
-              : 'Manage temporarily deleted invoices. Select to restore or permanently delete.'}
+            Quản lý các hóa đơn đã tạm xóa — khôi phục lại hoặc xóa vĩnh viễn khỏi hệ thống
           </p>
         </div>
       </div>
 
-      {/* Warning Notice Banner */}
+      {/* Hộp cảnh báo đã được tối ưu độ tương phản (High Contrast) cho cả Light & Dark Mode */}
       <div className="trash-warning">
-        <span style={{ fontSize: '18px' }}>⚠️</span>
-        <div>
-          <strong>{lang === 'vi' ? 'Lưu ý lưu trữ:' : 'Storage Notice:'}</strong>{' '}
-          {lang === 'vi' 
-            ? 'Hóa đơn đã xóa tạm thời sẽ tự động được hệ thống xóa vĩnh viễn sau 30 ngày.' 
-            : 'Temporarily deleted invoices will be permanently wiped by the system after 30 days.'}
+        <div className="trash-warning-icon">
+          <AlertTriangle size={20} strokeWidth={1.75} />
+        </div>
+        <div className="trash-warning-text">
+          <strong>Lưu ý lưu trữ:</strong> Các hóa đơn trong mục Lịch sử xóa sẽ tự động bị xóa vĩnh viễn sau{' '}
+          <strong>30 ngày</strong> kể từ thời điểm xóa.
         </div>
       </div>
 
-      {/* Toolbar: Select All & Bulk Actions */}
-      {invoices.length > 0 && (
+      {/* Action Toolbar */}
+      {!loading && trashedInvoices.length > 0 && (
         <div className="trash-toolbar">
           <div className="trash-toolbar-left">
             <label className="trash-select-all-label">
-              <input 
-                type="checkbox" 
-                className="trash-checkbox"
+              <input
+                type="checkbox"
                 checked={isAllSelected}
-                onChange={handleToggleSelectAll}
-                disabled={actionLoading}
+                onChange={toggleSelectAll}
+                className="trash-checkbox"
               />
-              <span className="trash-select-all-text">
-                {isAllSelected 
-                  ? (lang === 'vi' ? 'Bỏ chọn tất cả' : 'Deselect All') 
-                  : (lang === 'vi' ? 'Chọn tất cả' : 'Select All')} ({invoices.length})
+              <span>
+                Chọn tất cả ({selectedIds.length}/{trashedInvoices.length})
               </span>
             </label>
 
             {selectedIds.length > 0 && (
               <span className="trash-badge-count">
-                {lang === 'vi' ? 'Đã chọn:' : 'Selected:'} <strong>{selectedIds.length}</strong> / {invoices.length}
+                Đang chọn <strong>{selectedIds.length}</strong> hóa đơn
               </span>
             )}
           </div>
@@ -195,176 +243,127 @@ export default function Trash() {
           <div className="trash-toolbar-right">
             {selectedIds.length > 0 ? (
               <>
-                <button 
-                  type="button" 
+                <button
                   className="btn btn-outline btn-sm"
+                  disabled={actionLoading}
                   onClick={handleBatchRestore}
-                  disabled={actionLoading}
                 >
-                  🔄 {lang === 'vi' ? `Khôi phục (${selectedIds.length})` : `Restore (${selectedIds.length})`}
+                  <RotateCcw size={15} strokeWidth={1.75} />
+                  Khôi phục ({selectedIds.length})
                 </button>
-                <button 
-                  type="button" 
+                <button
                   className="btn btn-danger btn-sm"
-                  onClick={() => setConfirmModal({ mode: 'selected', count: selectedIds.length })}
                   disabled={actionLoading}
-                  style={{ background: '#DC2626', color: '#FFFFFF', border: 'none' }}
+                  onClick={handleBatchPermanentDelete}
                 >
-                  🗑️ {lang === 'vi' ? `Xóa đã chọn (${selectedIds.length})` : `Delete Selected (${selectedIds.length})`}
-                </button>
-                <button 
-                  type="button" 
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setSelectedIds([])}
-                  disabled={actionLoading}
-                >
-                  ✕ {lang === 'vi' ? 'Bỏ chọn' : 'Deselect'}
+                  <Trash2 size={15} strokeWidth={1.75} />
+                  Xóa vĩnh viễn ({selectedIds.length})
                 </button>
               </>
             ) : (
-              <button 
-                type="button" 
-                className="btn btn-danger btn-sm btn-outline-danger"
-                onClick={() => setConfirmModal({ mode: 'all', count: invoices.length })}
+              <button
+                className="btn btn-outline-danger btn-sm"
                 disabled={actionLoading}
+                onClick={handleEmptyTrash}
               >
-                🔥 {lang === 'vi' ? `Xóa tất cả (${invoices.length})` : `Empty All Trash (${invoices.length})`}
+                <Trash2 size={15} strokeWidth={1.75} />
+                Dọn sạch tất cả ({trashedInvoices.length})
               </button>
             )}
           </div>
         </div>
       )}
 
-      {/* Main List */}
       {loading ? (
         <div className="loading-overlay">
           <div className="spinner"></div>
         </div>
+      ) : trashedInvoices.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-icon" style={{ display: 'inline-flex' }}>
+            <Trash2 size={42} strokeWidth={1.5} />
+          </div>
+          <h3>Thùng rác trống</h3>
+          <p>Không có hóa đơn nào trong danh sách xóa.</p>
+        </div>
       ) : (
-        <div className="invoice-list">
-          {invoices.map((inv) => {
+        <div className="trash-list">
+          {trashedInvoices.map((inv) => {
             const isSelected = selectedIds.includes(inv.invoice_id);
+            const formattedAmt = formatAmount(inv.total_amount);
+
             return (
-              <div 
-                key={inv.invoice_id} 
+              <div
+                key={inv.invoice_id}
                 className={`trash-item ${isSelected ? 'is-selected' : ''}`}
-                onClick={() => handleToggleSelectOne(inv.invoice_id)}
+                onClick={() => toggleSelectOne(inv.invoice_id)}
               >
-                {/* Checkbox */}
-                <div className="trash-item-select" onClick={(e) => e.stopPropagation()}>
-                  <input 
-                    type="checkbox" 
-                    className="trash-checkbox"
+                <div
+                  className="trash-item-select"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <input
+                    type="checkbox"
                     checked={isSelected}
-                    onChange={() => handleToggleSelectOne(inv.invoice_id)}
-                    disabled={actionLoading}
+                    onChange={() => toggleSelectOne(inv.invoice_id)}
+                    className="trash-checkbox"
                   />
                 </div>
 
-                <div className="trash-item-icon">🗑️</div>
+                <div className="trash-item-icon">
+                  <Receipt size={20} strokeWidth={1.75} />
+                </div>
 
                 <div className="trash-item-info">
-                  <h4>{inv.store_name || (lang === 'vi' ? 'Không rõ cửa hàng' : 'Unknown Store')}</h4>
-                  
+                  <h4>{inv.store_name || 'Cửa hàng chưa xác định'}</h4>
                   <div className="trash-meta-row">
                     {inv.date && (
-                      <span className="trash-meta-tag">
-                        📅 {inv.date}
+                      <span className="trash-meta-tag" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                        <Calendar size={13} strokeWidth={1.75} />
+                        {inv.date}
                       </span>
                     )}
-                    {inv.total_amount && inv.total_amount > 0 && (
+                    {formattedAmt && (
                       <span className="trash-meta-tag amount">
-                        💰 {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(inv.total_amount)}
+                        {formattedAmt}
                       </span>
                     )}
                     <span className="trash-reason">
-                      {lang === 'vi' ? 'Lý do: Ảnh/hóa đơn bị trùng hoặc đã xóa' : 'Reason: Duplicate or deleted'}
+                      Lý do: {inv.delete_reason || 'Không rõ lý do'}
                     </span>
                   </div>
-
-                  <div className="trash-timer">
-                    ⏳ {lang === 'vi' ? 'Còn 30 ngày trước khi tự xóa vĩnh viễn' : 'Auto-purge in 30 days'}
+                  <div className="trash-timer" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                    <Clock size={12} strokeWidth={1.75} />
+                    Tự động xóa sau {getDaysRemaining(inv.deleted_at)} ngày
                   </div>
                 </div>
 
-                {/* Individual Action buttons */}
-                <div className="trash-actions" onClick={(e) => e.stopPropagation()}>
-                  <button 
-                    type="button"
-                    className="btn btn-ghost btn-sm" 
+                <div
+                  className="trash-actions"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    className="btn btn-outline btn-sm"
+                    disabled={actionLoading}
                     onClick={() => handleRestore(inv.invoice_id)}
-                    disabled={actionLoading}
+                    title="Khôi phục hóa đơn về Lịch sử"
                   >
-                    🔄 {lang === 'vi' ? 'Khôi phục' : 'Restore'}
+                    <RotateCcw size={14} strokeWidth={1.75} />
+                    Khôi phục
                   </button>
-                  <button 
-                    type="button"
-                    className="btn btn-danger btn-sm" 
-                    onClick={() => setConfirmModal({ mode: 'single', id: inv.invoice_id, name: inv.store_name })} 
+                  <button
+                    className="btn btn-danger btn-sm"
                     disabled={actionLoading}
-                    style={{ padding: '6px 12px', background: '#FEE2E2', color: '#DC2626' }}
+                    onClick={() => handlePermanentDelete(inv.invoice_id)}
+                    title="Xóa vĩnh viễn không thể khôi phục"
                   >
-                    🗑️ {lang === 'vi' ? 'Xóa hẳn' : 'Delete'}
+                    <Trash2 size={14} strokeWidth={1.75} />
+                    Xóa vĩnh viễn
                   </button>
                 </div>
               </div>
             );
           })}
-          
-          {invoices.length === 0 && (
-            <div className="empty-state">
-              <div className="empty-icon">🗑️</div>
-              <h3>{lang === 'vi' ? 'Thùng rác trống' : 'Trash is empty'}</h3>
-              <p>{lang === 'vi' ? 'Không có hóa đơn nào đã xóa gần đây.' : 'No deleted invoices found.'}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Confirmation Modal */}
-      {confirmModal && (
-        <div className="modal-overlay animate-fade-in" onClick={() => !actionLoading && setConfirmModal(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px', textAlign: 'center' }}>
-            <div style={{ fontSize: '40px', marginBottom: '12px' }}>⚠️</div>
-            
-            <div className="modal-header" style={{ justifyContent: 'center', marginBottom: '8px' }}>
-              <h3 style={{ fontSize: '20px', fontWeight: '700' }}>
-                {confirmModal.mode === 'all' 
-                  ? (lang === 'vi' ? `Xóa tất cả ${confirmModal.count} hóa đơn?` : `Empty all ${confirmModal.count} invoices?`)
-                  : confirmModal.mode === 'selected'
-                    ? (lang === 'vi' ? `Xóa vĩnh viễn ${confirmModal.count} hóa đơn đã chọn?` : `Delete ${confirmModal.count} selected invoices?`)
-                    : (lang === 'vi' ? 'Xóa vĩnh viễn hóa đơn này?' : 'Delete this invoice permanently?')}
-              </h3>
-            </div>
-
-            <p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: '1.5', marginBottom: '24px' }}>
-              {lang === 'vi' 
-                ? 'Hành động này sẽ xóa triệt để dữ liệu hóa đơn khỏi hệ thống và KHÔNG THỂ HOÀN TÁC. Bạn có chắc chắn muốn tiếp tục?' 
-                : 'This action will permanently remove the invoice data from the system and CANNOT BE UNDONE. Are you sure you want to proceed?'}
-            </p>
-
-            <div className="modal-actions" style={{ justifyContent: 'center', gap: '12px' }}>
-              <button 
-                type="button"
-                className="btn btn-ghost" 
-                onClick={() => setConfirmModal(null)}
-                disabled={actionLoading}
-              >
-                {lang === 'vi' ? 'Hủy bỏ' : 'Cancel'}
-              </button>
-              <button 
-                type="button"
-                className="btn btn-danger" 
-                onClick={handleExecuteDelete}
-                disabled={actionLoading}
-                style={{ background: '#DC2626', color: '#FFFFFF', minWidth: '130px' }}
-              >
-                {actionLoading 
-                  ? (lang === 'vi' ? '⏳ Đang xóa...' : 'Deleting...') 
-                  : (lang === 'vi' ? 'Xác nhận xóa hẳn' : 'Confirm Delete')}
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>

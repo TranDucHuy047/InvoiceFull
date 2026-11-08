@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = `http://${window.location.hostname || 'localhost'}:8000`;
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -17,7 +17,11 @@ api.interceptors.request.use((config) => {
 
 // Auth
 export const login = (username, password) =>
-  api.post('/api/auth/login', new URLSearchParams({ username, password }), { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+  api.post(
+    '/api/auth/login',
+    new URLSearchParams({ username, password }),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+  );
 
 export const sendOtp = (contact, username) =>
   api.post('/api/auth/send-otp', { contact, username });
@@ -27,20 +31,34 @@ export const register = (username, email, password, full_name, otp_code) =>
 
 export const getProfile = () => api.get('/api/auth/me');
 
-export const updateProfile = (data) => api.put('/api/auth/profile', data);
+export const updateProfile = (dataOrFullName, maybeEmail) => {
+  const payload =
+    typeof dataOrFullName === 'object' && dataOrFullName !== null
+      ? dataOrFullName
+      : { full_name: dataOrFullName, email: maybeEmail };
+  return api.put('/api/auth/profile', payload);
+};
 
 export const changePassword = (old_password, new_password) =>
   api.post('/api/auth/change-password', { old_password, new_password });
 
 export const logout = () => api.post('/api/auth/logout');
 
+export const deleteAccount = () =>
+  api.post('/api/reports', {
+    invoice_id: 'ACCOUNT',
+    description: '[Yêu cầu xóa tài khoản] Người dùng gửi yêu cầu xóa tài khoản cá nhân.',
+  });
+
 // Invoices
 export const getInvoices = (params) => api.get('/api/invoices', { params });
 
 export const getInvoiceDetail = (invoiceId) => api.get(`/api/invoices/${invoiceId}`);
 
-export const deleteInvoice = (invoiceId) =>
-  api.delete(`/api/invoices/${invoiceId}`);
+export const deleteInvoice = (invoiceId, reason = '') =>
+  api.delete(
+    `/api/invoices/${invoiceId}${reason ? `?reason=${encodeURIComponent(reason)}` : ''}`
+  );
 
 export const permanentDeleteInvoice = (invoiceId) =>
   api.delete(`/api/invoices/${invoiceId}/permanent`);
@@ -52,25 +70,34 @@ export const updateInvoice = (invoiceId, data) =>
   api.put(`/api/invoices/${invoiceId}`, data);
 
 export const getTrash = () => api.get('/api/invoices/trash');
+export const getTrashInvoices = getTrash;
 
 export const emptyTrash = () =>
   api.delete('/api/invoices/trash/empty');
 
 export const batchDeleteTrash = (invoiceIds) =>
   api.post('/api/invoices/trash/batch-delete', { invoice_ids: invoiceIds });
+export const batchPermanentDeleteInvoices = batchDeleteTrash;
 
 export const batchRestoreTrash = (invoiceIds) =>
   api.post('/api/invoices/trash/batch-restore', { invoice_ids: invoiceIds });
+export const batchRestoreInvoices = batchRestoreTrash;
 
 export const exportCSV = (params) =>
   api.get('/api/invoices/export', { params, responseType: 'blob' });
 
 // Upload/Analyze
-export const analyzeInvoice = (formData) =>
-  api.post('/api/analyze-invoice', formData, {
+export const analyzeInvoice = (formData, forceOverwrite = false) =>
+  api.post(`/api/analyze-invoice?force_overwrite=${Boolean(forceOverwrite)}`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 120000,
   });
+
+export const uploadInvoice = (file, forceOverwrite = false) => {
+  const fd = new FormData();
+  fd.append('file', file);
+  return analyzeInvoice(fd, forceOverwrite);
+};
 
 // QA/Chat
 export const askQuestion = (invoice_id, question) => {
@@ -79,26 +106,34 @@ export const askQuestion = (invoice_id, question) => {
   }
   return api.post('/api/qa', { invoice_id, question });
 };
+export const askInvoiceQuestion = askQuestion;
 
 export const askGlobalQuestion = (question) =>
   api.post('/api/qa/global', { question });
 
 export const getChatHistory = (invoiceId) => {
-  const target = (!invoiceId || invoiceId === 'all') ? 'GLOBAL' : invoiceId;
+  const target = !invoiceId || invoiceId === 'all' ? 'GLOBAL' : invoiceId;
   return api.get(`/api/history/${target}`);
 };
 
 export const getChatSessions = () => api.get('/api/history/sessions');
 
 export const deleteChatSession = (invoiceId) => {
-  const target = (!invoiceId || invoiceId === 'all') ? 'GLOBAL' : invoiceId;
+  const target = !invoiceId || invoiceId === 'all' ? 'GLOBAL' : invoiceId;
   return api.delete(`/api/history/${target}`);
 };
 
 export const deleteAllChatHistory = () => api.delete('/api/history');
+export const clearAllChatHistory = deleteAllChatHistory;
 
 // Reports
 export const submitReport = (data) => api.post('/api/reports', data);
+
+export const createReport = (invoiceId, reason, details) =>
+  submitReport({
+    invoice_id: invoiceId && invoiceId !== 'N/A' ? String(invoiceId) : null,
+    description: `[${reason}] ${details}`,
+  });
 
 export const getReports = () => api.get('/api/reports');
 

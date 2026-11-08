@@ -1,12 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import Header from '../components/Header';
 import axiosClient from '../api/axiosClient';
-import { Database, RefreshCw } from 'lucide-react';
+import { Database, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 export default function BackupRestore() {
   const [backups, setBackups] = useState([]);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(null);
+    }, 3500);
+  };
 
   const fetchBackups = () => {
     axiosClient.get('/admin/backups')
@@ -26,11 +34,11 @@ export default function BackupRestore() {
     setIsBackingUp(true);
     axiosClient.post('/admin/backups')
       .then(res => {
-        alert(res.data.message);
+        showToast(res.data.message || 'Sao lưu dữ liệu thành công!', 'success');
         fetchBackups();
       })
       .catch(err => {
-        alert("Lỗi sao lưu: " + err.message);
+        showToast('Lỗi sao lưu: ' + (err.response?.data?.detail || err.message), 'error');
       })
       .finally(() => setIsBackingUp(false));
   };
@@ -41,17 +49,40 @@ export default function BackupRestore() {
     setIsRestoring(true);
     axiosClient.post(`/admin/backups/restore?filename=${filename}`)
       .then(res => {
-        alert(res.data.message);
+        showToast(res.data.message || 'Khôi phục dữ liệu thành công!', 'success');
       })
       .catch(err => {
-        alert("Lỗi khôi phục: " + err.message);
+        showToast('Lỗi khôi phục: ' + (err.response?.data?.detail || err.message), 'error');
       })
       .finally(() => setIsRestoring(false));
   };
 
   return (
-    <div className="animate-fade-in">
+    <div className="animate-fade-in" style={{ position: 'relative' }}>
       <Header title="Sao lưu / Khôi phục dữ liệu" subtitle="Quản lý các bản sao lưu hệ thống." />
+
+      {toast && (
+        <div style={{
+          position: 'fixed',
+          top: '24px',
+          right: '32px',
+          zIndex: 9999,
+          padding: '14px 20px',
+          borderRadius: '10px',
+          color: toast.type === 'error' ? 'var(--danger)' : '#065F46',
+          backgroundColor: toast.type === 'error' ? 'var(--danger-bg)' : 'var(--success-bg)',
+          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          fontWeight: '600',
+          fontSize: '14px',
+          animation: 'fadeIn 0.3s ease'
+        }}>
+          {toast.type === 'error' ? <AlertTriangle size={18} /> : <CheckCircle2 size={18} />}
+          <span>{toast.message}</span>
+        </div>
+      )}
       
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '32px' }}>
         <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '32px 24px' }}>
@@ -64,7 +95,7 @@ export default function BackupRestore() {
               <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Tạo bản sao lưu tài khoản, hóa đơn và lịch sử.</div>
             </div>
           </div>
-          <button className="btn" onClick={handleBackup} disabled={isBackingUp}>
+          <button className="btn btn-primary" onClick={handleBackup} disabled={isBackingUp}>
             {isBackingUp ? "Đang sao lưu..." : "Sao lưu ngay"}
           </button>
         </div>

@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, User, ReceiptText, 
-  MessageCircleQuestion, Database, LogOut, Receipt
+  MessageCircleQuestion, Database, LogOut, Receipt, ExternalLink
 } from 'lucide-react';
 
 const menuItems = [
@@ -14,9 +14,11 @@ const menuItems = [
 ];
 
 export default function Sidebar() {
+  const customerWebUrl = `http://${window.location.hostname || 'localhost'}:5173`;
+
   const handleLogout = () => {
     localStorage.removeItem('admin_token');
-    window.location.href = 'http://localhost:5173/login?logout=true';
+    window.location.href = `${customerWebUrl}/login?logout=true`;
   };
 
   return (
@@ -56,7 +58,7 @@ export default function Sidebar() {
       {/* Navigation */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
         <a
-          href="http://localhost:5173"
+          href={customerWebUrl}
           target="_blank"
           rel="noreferrer"
           style={{
@@ -67,7 +69,7 @@ export default function Sidebar() {
             fontSize: '13px', marginBottom: '8px'
           }}
         >
-          <span>📱</span> Mở Web Khách Hàng
+          <ExternalLink size={18} /> Mở Web Khách Hàng
         </a>
 
         {menuItems.map(item => (

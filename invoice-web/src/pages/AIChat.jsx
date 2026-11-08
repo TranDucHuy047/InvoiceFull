@@ -1,496 +1,745 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { 
-  getInvoices, 
-  askQuestion, 
-  getChatHistory, 
-  getChatSessions, 
-  deleteChatSession, 
-  deleteAllChatHistory 
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import {
+  askQuestion,
+  getInvoices,
+  getInvoiceDetail,
+  getChatHistory,
+  getChatSessions,
+  deleteChatSession,
+  deleteAllChatHistory,
 } from '../services/api';
-import { useLanguage } from '../contexts/LanguageContext';
+import {
+  Sparkles,
+  Bot,
+  User,
+  Send,
+  History,
+  Plus,
+  Trash2,
+  X,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  Receipt,
+  Store,
+  Calendar,
+  Wallet,
+  Percent,
+  ExternalLink,
+  Globe,
+  FileText,
+  Lightbulb,
+  CheckCircle2,
+  MessageSquare,
+} from 'lucide-react';
 
 export default function AIChat() {
-  const { lang } = useLanguage();
   const location = useLocation();
   const navigate = useNavigate();
+  const passedInvoiceId = location.state?.invoiceId;
+  const passedStoreName = location.state?.storeName;
 
-  // If passed from invoice detail: location.state?.invoiceId, otherwise '' (Tất cả hóa đơn / Toàn bộ)
-  const [currentInvoiceId, setCurrentInvoiceId] = useState(location.state?.invoiceId || '');
   const [invoices, setInvoices] = useState([]);
-  
-  const [messages, setMessages] = useState([]);
+  const [currentInvoiceId, setCurrentInvoiceId] = useState(passedInvoiceId || '');
+  const [currentStoreName, setCurrentStoreName] = useState(passedStoreName || '');
+  const [selectedDetail, setSelectedDetail] = useState(null);
+  const [imgZoom, setImgZoom] = useState(1);
+  const [imgError, setImgError] = useState(false);
+
+  const [sessions, setSessions] = useState([]);
+  const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [toastMsg, setToastMsg] = useState('');
+
+  const buildWelcomeMessage = (invId, storeName) => ({
+    role: 'ai',
+    content: invId
+      ? `Xin chào! Tôi là **Trợ lý AI Phân Tích Hóa Đơn**.\n\nBạn đang tra cứu hóa đơn của **${storeName || invId}**. Bạn muốn kiểm tra mặt hàng, thuế GTGT, mã số thuế hay tổng tiền trên chứng từ này?`
+      : 'Xin chào! Tôi là **Trợ lý AI Quản Lý Chi Tiêu**.\n\nBạn có thể chọn một hóa đơn ở cột bên trái để đối chiếu ảnh chứng từ gốc, hoặc đặt câu hỏi tổng hợp về toàn bộ lịch sử chi tiêu của bạn.',
+  });
+
+  const [messages, setMessages] = useState([
+    buildWelcomeMessage(passedInvoiceId, passedStoreName),
+  ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
 
-  // History Drawer & Session State
-  const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
-  const [sessions, setSessions] = useState([]);
-  const [sessionsLoading, setSessionsLoading] = useState(false);
-  const [confirmModal, setConfirmModal] = useState(null); // { mode: 'current' | 'single' | 'all', id?: string, title?: string }
-  const [toastMsg, setToastMsg] = useState(null);
-
-  const showToast = (text) => {
-    setToastMsg(text);
-    setTimeout(() => setToastMsg(null), 3000);
+  const showToast = (msg) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(''), 3000);
   };
 
-  // Gợi ý câu hỏi thông minh theo phạm vi
-  const globalPrompts = lang === 'vi' ? [
-    'Tổng chi tiêu của tôi là bao nhiêu?',
-    'Hóa đơn nào có số tiền lớn nhất?',
-    'món đắt tiền nhất là món nào',
-    'Tôi đã mua sắm ở những cửa hàng nào?'
-  ] : [
-    'What is my total spending across all invoices?',
-    'Which invoice has the highest amount?',
-    'Which item is the most expensive?',
-    'Which stores did I shop at?'
-  ];
-
-  const singlePrompts = lang === 'vi' ? [
-    'Tổng thanh toán của hóa đơn này là bao nhiêu?',
-    'Hóa đơn gồm những sản phẩm nào?',
-    'Tiền thuế VAT được tính ra sao?',
-    'Cửa hàng này tên gì và địa chỉ ở đâu?'
-  ] : [
-    'What is the total payment amount?',
-    'List all items in this invoice',
-    'How much is the VAT tax?',
-    'What is the store name and address?'
-  ];
-
-  const currentPrompts = currentInvoiceId ? singlePrompts : globalPrompts;
-
   useEffect(() => {
-    fetchInvoices();
+    getInvoices({ limit: 100 })
+      .then((res) => {
+        const list = res.data?.data || res.data || [];
+        setInvoices(list);
+        if (passedInvoiceId && !passedStoreName) {
+          const found = list.find((i) => i.invoice_id === passedInvoiceId);
+          if (found) setCurrentStoreName(found.store_name || '');
+        }
+      })
+      .catch(() => { });
+
     fetchSessions();
   }, []);
 
   useEffect(() => {
-    fetchHistory();
-  }, [currentInvoiceId, lang]);
+    const found = invoices.find((i) => i.invoice_id === currentInvoiceId);
+    const sName = found ? found.store_name : currentStoreName;
+    fetchHistoryForScope(currentInvoiceId, sName);
+  }, [currentInvoiceId]);
+
+  // Load detailed metadata (tax_amount, items, image_path) whenever currentInvoiceId changes
+  useEffect(() => {
+    setImgZoom(1);
+    setImgError(false);
+    if (!currentInvoiceId) {
+      setSelectedDetail(null);
+      return;
+    }
+    const summaryInv = invoices.find((i) => i.invoice_id === currentInvoiceId) || null;
+    setSelectedDetail(summaryInv);
+
+    getInvoiceDetail(currentInvoiceId)
+      .then((res) => {
+        const d = res.data?.data || res.data;
+        if (d) setSelectedDetail((prev) => ({ ...prev, ...d }));
+      })
+      .catch(() => { });
+  }, [currentInvoiceId, invoices]);
+
+  const fetchSessions = async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await getChatSessions();
+      const fetchedSessions = res.data?.data || res.data?.sessions || [];
+      setSessions(fetchedSessions);
+    } catch (err) {
+      console.error('Lỗi tải danh sách phiên chat:', err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const fetchHistoryForScope = async (invId, storeName = '') => {
+    try {
+      const targetSession = invId || 'GLOBAL';
+      const res = await getChatHistory(targetSession);
+      const historyList = res.data?.data || [];
+      if (Array.isArray(historyList) && historyList.length > 0) {
+        setMessages([buildWelcomeMessage(invId, storeName), ...historyList]);
+      } else {
+        setMessages([buildWelcomeMessage(invId, storeName)]);
+      }
+    } catch (err) {
+      setMessages([buildWelcomeMessage(invId, storeName)]);
+    }
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
-  const fetchInvoices = async () => {
-    try {
-      const res = await getInvoices({ limit: 100 });
-      setInvoices(res.data.data || []);
-    } catch (error) {
-      console.error('Error fetching invoices:', error);
+  const handleInvoiceChange = (e) => {
+    const selectedId = e.target.value;
+    const found = invoices.find((inv) => inv.invoice_id === selectedId);
+    const sName = found ? found.store_name : '';
+    setCurrentStoreName(sName);
+    setCurrentInvoiceId(selectedId);
+  };
+
+  const handleSelectSession = (session) => {
+    const sessId = session.session_id || session.scope_key || 'GLOBAL';
+    const isGlobal = sessId === 'GLOBAL' || sessId === '__global__';
+    const targetInvId = isGlobal ? '' : sessId;
+    const found = invoices.find((inv) => inv.invoice_id === targetInvId);
+    const sName = found ? found.store_name : session.store_name || '';
+    setCurrentStoreName(sName);
+    setCurrentInvoiceId(targetInvId);
+    if (targetInvId === currentInvoiceId) {
+      fetchHistoryForScope(targetInvId, sName);
     }
+    setShowHistoryDrawer(false);
   };
 
-  const fetchSessions = async () => {
-    setSessionsLoading(true);
+  const handleStartNewChat = async () => {
+    const targetSession = currentInvoiceId || 'GLOBAL';
     try {
-      const res = await getChatSessions();
-      setSessions(res.data?.data || []);
-    } catch (error) {
-      console.error('Error fetching sessions:', error);
-    } finally {
-      setSessionsLoading(false);
+      await deleteChatSession(targetSession);
+      setSessions((prev) =>
+        prev.filter((s) => (s.session_id || s.scope_key) !== targetSession)
+      );
+    } catch (err) {
+      console.error(err);
     }
+    setMessages([buildWelcomeMessage(currentInvoiceId, currentStoreName)]);
+    showToast('Đã làm mới cuộc trò chuyện');
   };
 
-  const getDefaultGreeting = () => {
-    return {
-      role: 'ai',
-      content: currentInvoiceId
-        ? (lang === 'vi' 
-            ? 'Hóa đơn đã sẵn sàng! Bạn có thể hỏi bất kỳ thông tin nào về mặt hàng, ngày tháng hoặc số tiền.' 
-            : 'Invoice is ready! Ask me anything about items, dates, or totals.')
-        : (lang === 'vi' 
-            ? 'Xin chào! Bạn đang ở chế độ tra cứu TOÀN BỘ hóa đơn. Bạn có thể hỏi tổng chi tiêu, hóa đơn đắt nhất, số lượng hóa đơn, thống kê các quán,... Hãy nhập câu hỏi ở bên dưới!' 
-            : 'Hello! You are querying across ALL invoices. You can ask for total spending, highest bill, recent stores, or summaries below!')
-    };
-  };
-
-  const fetchHistory = async () => {
+  const handleDeleteSession = async (e, sessId) => {
+    e.stopPropagation();
     try {
-      const targetSession = currentInvoiceId || 'GLOBAL';
-      const res = await getChatHistory(targetSession);
-      const historyList = res.data?.data || [];
-      
-      if (historyList.length > 0) {
-        setMessages([
-          { 
-            role: 'ai', 
-            content: currentInvoiceId 
-              ? (lang === 'vi' ? 'Đã tải dữ liệu hóa đơn này. Bạn cần tôi phân tích điều gì?' : 'Invoice loaded. What would you like to analyze?')
-              : (lang === 'vi' ? 'Đã tải lịch sử hỏi đáp toàn bộ hóa đơn. Hãy đặt câu hỏi cho tôi!' : 'Global invoice query history loaded. Ask me anything!')
-          },
-          ...historyList
-        ]);
-      } else {
-        setMessages([getDefaultGreeting()]);
+      await deleteChatSession(sessId);
+      setSessions((prev) =>
+        prev.filter((s) => (s.session_id || s.scope_key) !== sessId)
+      );
+      const activeKey = currentInvoiceId || 'GLOBAL';
+      if (sessId === activeKey) {
+        setMessages([buildWelcomeMessage(currentInvoiceId, currentStoreName)]);
       }
-    } catch (error) {
-      console.error('Error fetching chat history:', error);
-      setMessages([getDefaultGreeting()]);
+      showToast('Đã xóa phiên trò chuyện');
+    } catch (err) {
+      console.error('Lỗi xóa phiên chat:', err);
     }
   };
 
-  const handleSendPrompt = (promptText) => {
-    if (loading) return;
-    executeMessage(promptText);
+  const handleClearAllHistory = async () => {
+    if (!window.confirm('Bạn có chắc muốn xóa toàn bộ lịch sử trò chuyện AI?')) return;
+    try {
+      await deleteAllChatHistory();
+      setSessions([]);
+      setMessages([buildWelcomeMessage(currentInvoiceId, currentStoreName)]);
+      setShowHistoryDrawer(false);
+      showToast('Đã xóa toàn bộ lịch sử trò chuyện');
+    } catch (err) {
+      console.error('Lỗi xóa toàn bộ lịch sử:', err);
+    }
   };
 
-  const executeMessage = async (msgText) => {
-    if (!msgText.trim()) return;
-    
-    setMessages(prev => [...prev, { role: 'user', content: msgText }]);
+  const sendQuestion = async (questionText) => {
+    const trimmed = questionText.trim();
+    if (!trimmed || loading) return;
+
+    const userMsg = { role: 'user', content: trimmed };
+    setMessages((prev) => [...prev, userMsg]);
     setInput('');
     setLoading(true);
 
     try {
-      const res = await askQuestion(currentInvoiceId || '', msgText);
-      const answer = res.data?.data?.answer || res.data?.answer || (lang === 'vi' ? 'Đã nhận được câu trả lời từ hệ thống.' : 'Response received.');
-      setMessages(prev => [...prev, { role: 'ai', content: answer }]);
-      // Refresh session list so preview and counts update
+      const res = await askQuestion(currentInvoiceId || null, trimmed);
+      const answer =
+        res.data?.data?.answer ||
+        res.data?.answer ||
+        res.data?.message ||
+        'Đã xử lý câu hỏi nhưng không có phản hồi chi tiết.';
+      setMessages((prev) => [...prev, { role: 'ai', content: answer }]);
       fetchSessions();
     } catch (err) {
-      console.error('QA Error:', err);
-      setMessages(prev => [...prev, { 
-        role: 'ai', 
-        content: lang === 'vi' ? 'Xin lỗi, đã xảy ra sự cố khi tra cứu câu hỏi của bạn. Vui lòng thử lại.' : 'Sorry, an error occurred while processing your query. Please try again.' 
-      }]);
+      const detail = err.response?.data?.detail;
+      const errMsg =
+        typeof detail === 'string'
+          ? detail
+          : 'Không thể kết nối đến máy chủ AI. Vui lòng kiểm tra lại kết nối Backend.';
+      setMessages((prev) => [...prev, { role: 'ai', content: errMsg }]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSend = (e) => {
-    e?.preventDefault();
-    if (!input.trim() || loading) return;
-    executeMessage(input.trim());
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    sendQuestion(input);
   };
 
-  // Switch to session from drawer
-  const handleSelectSession = (sessionId) => {
-    const targetId = sessionId === 'GLOBAL' ? '' : sessionId;
-    setCurrentInvoiceId(targetId);
-    setShowHistoryDrawer(false);
-  };
-
-  // Handle single or current session delete
-  const handleDeleteSession = async (targetId) => {
-    try {
-      await deleteChatSession(targetId);
-      showToast(lang === 'vi' ? 'Đã xóa cuộc trò chuyện.' : 'Conversation deleted.');
-      
-      const currentTarget = currentInvoiceId || 'GLOBAL';
-      if (currentTarget === targetId) {
-        // If we deleted the active conversation, reset messages
-        setMessages([getDefaultGreeting()]);
-      }
-      await fetchSessions();
-    } catch (err) {
-      console.error('Delete session error:', err);
-      showToast(lang === 'vi' ? 'Lỗi khi xóa cuộc trò chuyện.' : 'Error deleting conversation.');
+  const getImageUrl = (imagePath, invoiceId) => {
+    const resolvedPath = imagePath || (invoiceId ? `uploads/${invoiceId}.jpg` : null);
+    if (!resolvedPath) return null;
+    if (
+      resolvedPath.startsWith('http://') ||
+      resolvedPath.startsWith('https://') ||
+      resolvedPath.startsWith('data:')
+    ) {
+      return resolvedPath;
     }
+    const cleanPath = String(resolvedPath).replace(/\\/g, '/').replace(/^\/+/, '');
+    const host = window.location.hostname || 'localhost';
+    return `http://${host}:8000/${cleanPath}`;
   };
 
-  // Handle delete all sessions
-  const handleDeleteAllSessions = async () => {
-    try {
-      await deleteAllChatHistory();
-      showToast(lang === 'vi' ? 'Đã xóa tất cả các cuộc trò chuyện.' : 'All chat history cleared.');
-      setMessages([getDefaultGreeting()]);
-      await fetchSessions();
-    } catch (err) {
-      console.error('Delete all error:', err);
-      showToast(lang === 'vi' ? 'Lỗi khi xóa tất cả lịch sử.' : 'Error clearing chat history.');
-    }
+  const formatCurrency = (val) => {
+    if (val === undefined || val === null || val === '') return '0 đ';
+    return Number(val).toLocaleString('vi-VN') + ' đ';
   };
 
-  // Confirm delete modal execution
-  const executeConfirmModal = async () => {
-    if (!confirmModal) return;
-    
-    if (confirmModal.mode === 'all') {
-      await handleDeleteAllSessions();
-    } else if (confirmModal.mode === 'single' || confirmModal.mode === 'current') {
-      await handleDeleteSession(confirmModal.id);
-    }
-    setConfirmModal(null);
-  };
+  const quickQuestions = currentInvoiceId
+    ? [
+      'Tổng thanh toán của hóa đơn này là bao nhiêu?',
+      'Hóa đơn gồm những sản phẩm nào?',
+      'Tiền thuế GTGT (VAT) là bao nhiêu?',
+      'Mã số thuế và địa chỉ đơn vị bán hàng?',
+      'Mặt hàng nào có giá trị cao nhất?',
+    ]
+    : [
+      'Tổng chi tiêu của tôi là bao nhiêu?',
+      'Tôi có bao nhiêu hóa đơn?',
+      'Hóa đơn nào có giá trị cao nhất?',
+      'Thống kê chi tiêu theo từng cửa hàng?',
+    ];
 
-  const activeSessionKey = currentInvoiceId || 'GLOBAL';
+  const receiptImgUrl = getImageUrl(selectedDetail?.image_path, selectedDetail?.invoice_id || currentInvoiceId);
+  const totalSpendAll = invoices.reduce((acc, inv) => acc + (Number(inv.total_amount) || 0), 0);
 
   return (
-    <div className="ai-helper-page chat-layout-container animate-fade-in">
-      {/* Toast Alert */}
-      {toastMsg && (
-        <div className="chat-toast animate-fade-in">
-          <span>✓</span> <span>{toastMsg}</span>
-        </div>
-      )}
-
-      {/* Top Header Bar */}
+    <div className="chat-layout-container ai-split-page">
+      {/* Top Action Header */}
       <div className="chat-page-header">
         <div className="chat-header-left">
-          <button className="btn btn-icon" onClick={() => navigate(-1)} title="Quay lại">←</button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span className="chat-ai-sparkle">✨</span>
-            <h2 style={{ fontSize: '19px', margin: 0, fontWeight: '700' }}>
-              {lang === 'vi' ? 'Trợ lý Invoice AI' : 'Invoice AI Assistant'}
+          <div className="ai-page-title-icon">
+            <Sparkles size={20} strokeWidth={1.75} />
+          </div>
+          <div>
+            <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>Trợ lý Hỏi Đáp Hóa Đơn AI</span>
+              <span className="chat-ai-live-badge">Trực tuyến</span>
             </h2>
-            <span className="chat-ai-live-badge">{lang === 'vi' ? 'Sẵn sàng' : 'Active'}</span>
+            <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', margin: 0 }}>
+              Đối chiếu trực tiếp chứng từ gốc và phân tích dữ liệu bằng trí tuệ nhân tạo
+            </p>
           </div>
         </div>
 
         <div className="chat-header-actions">
-          {/* History Drawer Toggle Button */}
-          <button 
-            type="button" 
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={handleStartNewChat}
+            title="Làm mới cuộc trò chuyện hiện tại"
+          >
+            <Plus size={16} strokeWidth={1.75} />
+            Làm mới hội thoại
+          </button>
+
+          <button
+            type="button"
             className="btn btn-outline btn-sm chat-history-btn"
             onClick={() => {
               fetchSessions();
               setShowHistoryDrawer(true);
             }}
-            title={lang === 'vi' ? 'Xem danh sách các cuộc trò chuyện đã lưu' : 'View chat history'}
           >
-            📜 {lang === 'vi' ? 'Lịch sử trò chuyện' : 'Chat History'}
+            <History size={16} strokeWidth={1.75} />
+            Lịch sử chat
             {sessions.length > 0 && (
               <span className="chat-history-count-badge">{sessions.length}</span>
             )}
           </button>
-
-          {/* New Chat Button */}
-          <button 
-            type="button" 
-            className="btn btn-outline btn-sm"
-            onClick={() => {
-              setMessages([getDefaultGreeting()]);
-              showToast(lang === 'vi' ? 'Đã bắt đầu cuộc trò chuyện mới.' : 'Started new chat.');
-            }}
-            title={lang === 'vi' ? 'Làm mới cuộc trò chuyện' : 'New chat'}
-          >
-            ➕ {lang === 'vi' ? 'Mới' : 'New'}
-          </button>
-
-          {/* Delete Current Chat Button */}
-          <button 
-            type="button" 
-            className="btn btn-outline-danger btn-sm"
-            onClick={() => {
-              setConfirmModal({
-                mode: 'current',
-                id: activeSessionKey,
-                title: currentInvoiceId 
-                  ? (lang === 'vi' ? 'Xóa cuộc trò chuyện về hóa đơn này?' : 'Delete chat for this invoice?')
-                  : (lang === 'vi' ? 'Xóa cuộc trò chuyện Hỏi đáp Tổng quát?' : 'Delete Global chat history?')
-              });
-            }}
-            title={lang === 'vi' ? 'Xóa lịch sử cuộc trò chuyện hiện tại' : 'Delete this conversation'}
-          >
-            🗑️ {lang === 'vi' ? 'Xóa chat' : 'Clear'}
-          </button>
         </div>
       </div>
-      
-      {/* Scope Selector Card */}
-      <div className="chat-invoice-selector-card">
-        <div className="chat-sel-label">
-          <span>{currentInvoiceId ? '🧾' : '🌐'}</span>
-          <span>{lang === 'vi' ? 'Phạm vi tra cứu:' : 'Query Scope:'}</span>
-        </div>
-        <select 
-          value={currentInvoiceId} 
-          onChange={(e) => setCurrentInvoiceId(e.target.value)}
-          className="chat-invoice-select"
-        >
-          <option value="">
-            {lang === 'vi' ? '🌐 -- Tất cả hóa đơn (Hỏi đáp tổng quan) --' : '🌐 -- All Invoices (Global Overview) --'}
-          </option>
-          {invoices.map(inv => (
-            <option key={inv.invoice_id} value={inv.invoice_id}>
-              🧾 {inv.store_name || 'Không rõ'} - {inv.date || ''} ({new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(inv.total_amount || 0)})
-            </option>
-          ))}
-        </select>
-      </div>
 
-      {/* Main Chat Area */}
-      <div className="chat-window-card">
-        <div className="chat-messages-container">
-          {messages.map((msg, idx) => (
-            <div 
-              key={idx} 
-              className={`chat-message-row ${msg.role === 'user' ? 'user-side' : 'ai-side'}`}
+      {/* Split-Screen 2-Column Container (40% Left / 60% Right) */}
+      <div className="ai-split-grid">
+        {/* LEFT COLUMN (40%): Visual Receipt Inspector */}
+        <div className="ai-inspector-col">
+          {/* 1. Scope / Invoice Selector */}
+          <div className="ai-selector-box">
+            <label className="ai-selector-label">
+              <Receipt size={15} strokeWidth={1.75} />
+              <span>Chứng từ cần tra cứu</span>
+            </label>
+            <select
+              value={currentInvoiceId}
+              onChange={handleInvoiceChange}
+              className="chat-invoice-select"
+              style={{ width: '100%' }}
             >
-              <div className="chat-avatar-bubble">
-                {msg.role === 'user' ? '👤' : '✨'}
-              </div>
-              <div className="chat-speech-bubble">
-                {msg.content}
-              </div>
-            </div>
-          ))}
+              <option value="">Tất cả hóa đơn ({invoices.length} chứng từ)</option>
+              {invoices.map((inv) => (
+                <option key={inv.invoice_id} value={inv.invoice_id}>
+                  {inv.store_name || 'Cửa hàng'} — {inv.date || 'N/A'} (
+                  {Number(inv.total_amount || 0).toLocaleString('vi-VN')} đ)
+                </option>
+              ))}
+            </select>
+          </div>
 
-          {loading && (
-            <div className="chat-message-row ai-side">
-              <div className="chat-avatar-bubble ai-pulse">✨</div>
-              <div className="chat-speech-bubble typing-bubble">
-                <span className="chat-dot"></span>
-                <span className="chat-dot"></span>
-                <span className="chat-dot"></span>
+          {/* 2. Original Receipt Image or Global Overview */}
+          {currentInvoiceId && selectedDetail ? (
+            <>
+              <div className="ai-receipt-viewer-card">
+                <div className="ai-viewer-toolbar">
+                  <span className="ai-viewer-title">
+                    <FileText size={15} strokeWidth={1.75} />
+                    Ảnh chứng từ gốc
+                  </span>
+                  <div className="ai-viewer-controls">
+                    <button
+                      type="button"
+                      className="ai-zoom-btn"
+                      onClick={() => setImgZoom((z) => Math.max(0.6, +(z - 0.25).toFixed(2)))}
+                      title="Thu nhỏ"
+                    >
+                      <ZoomOut size={15} strokeWidth={1.75} />
+                    </button>
+                    <span className="ai-zoom-label">{Math.round(imgZoom * 100)}%</span>
+                    <button
+                      type="button"
+                      className="ai-zoom-btn"
+                      onClick={() => setImgZoom((z) => Math.min(2.5, +(z + 0.25).toFixed(2)))}
+                      title="Phóng to"
+                    >
+                      <ZoomIn size={15} strokeWidth={1.75} />
+                    </button>
+                    <button
+                      type="button"
+                      className="ai-zoom-btn"
+                      onClick={() => setImgZoom(1)}
+                      title="Đặt lại kích thước"
+                    >
+                      <RotateCcw size={14} strokeWidth={1.75} />
+                    </button>
+                    <button
+                      type="button"
+                      className="ai-zoom-btn"
+                      onClick={() => navigate(`/history/${currentInvoiceId}`)}
+                      title="Xem chi tiết hóa đơn"
+                    >
+                      <ExternalLink size={14} strokeWidth={1.75} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="ai-receipt-canvas">
+                  {receiptImgUrl && !imgError ? (
+                    <div
+                      className="ai-receipt-img-scroll"
+                      style={{
+                        overflow: 'auto',
+                        width: '100%',
+                        height: '100%',
+                        display: 'flex',
+                        justifyContent: 'center',
+                        alignItems: imgZoom > 1 ? 'flex-start' : 'center',
+                      }}
+                    >
+                      <img
+                        src={receiptImgUrl}
+                        alt={selectedDetail.store_name || 'Receipt'}
+                        style={{
+                          transform: `scale(${imgZoom})`,
+                          transformOrigin: 'top center',
+                          transition: 'transform 0.2s ease',
+                          maxWidth: '100%',
+                          maxHeight: '100%',
+                          objectFit: 'contain',
+                          borderRadius: '8px',
+                        }}
+                        onError={() => setImgError(true)}
+                      />
+                    </div>
+                  ) : (
+                    <div className="ai-receipt-fallback">
+                      <Receipt size={32} strokeWidth={1.5} style={{ color: 'var(--primary)', marginBottom: '8px' }} />
+                      <p style={{ fontWeight: 600, fontSize: '13.5px', color: 'var(--text-primary)', marginBottom: '4px' }}>
+                        {selectedDetail.store_name || 'Hóa đơn điện tử'}
+                      </p>
+                      <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                        {selectedDetail.raw_text
+                          ? 'Đang sử dụng dữ liệu văn bản OCR đã bóc tách'
+                          : 'Không có ảnh đính kèm'}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 3. Quick Metadata Summary Card */}
+              <div className="ai-summary-card">
+                <div className="ai-summary-header">
+                  <h4>Tóm tắt thông tin hóa đơn</h4>
+                  <span className="ai-summary-id">#{currentInvoiceId.slice(-8)}</span>
+                </div>
+                <div className="ai-summary-grid">
+                  <div className="ai-summary-item">
+                    <span className="ai-sum-label">
+                      <Store size={14} strokeWidth={1.75} /> Cửa hàng
+                    </span>
+                    <strong className="ai-sum-val" title={selectedDetail.store_name}>
+                      {selectedDetail.store_name || 'Chưa xác định'}
+                    </strong>
+                  </div>
+                  <div className="ai-summary-item">
+                    <span className="ai-sum-label">
+                      <Calendar size={14} strokeWidth={1.75} /> Ngày xuất
+                    </span>
+                    <strong className="ai-sum-val">{selectedDetail.date || 'Chưa rõ'}</strong>
+                  </div>
+                  <div className="ai-summary-item">
+                    <span className="ai-sum-label">
+                      <Wallet size={14} strokeWidth={1.75} /> Tổng tiền
+                    </span>
+                    <strong className="ai-sum-val highlight">
+                      {formatCurrency(selectedDetail.total_amount)}
+                    </strong>
+                  </div>
+                  <div className="ai-summary-item">
+                    <span className="ai-sum-label">
+                      <Percent size={14} strokeWidth={1.75} /> Thuế GTGT
+                    </span>
+                    <strong className="ai-sum-val">
+                      {selectedDetail.tax_amount
+                        ? formatCurrency(selectedDetail.tax_amount)
+                        : 'Đã gồm / 0 đ'}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            /* Global Scope Inspector Panel */
+            <div className="ai-global-inspector-card">
+              <div className="ai-global-badge">
+                <Globe size={20} strokeWidth={1.75} />
+                <div>
+                  <h4>Chế độ tra cứu toàn bộ hóa đơn</h4>
+                  <p>AI đang tổng hợp dữ liệu trên tất cả chứng từ của bạn</p>
+                </div>
+              </div>
+
+              <div className="ai-global-stats">
+                <div className="ai-g-stat">
+                  <span>Tổng số chứng từ</span>
+                  <strong>{invoices.length} hóa đơn</strong>
+                </div>
+                <div className="ai-g-stat">
+                  <span>Tổng chi tiêu tích lũy</span>
+                  <strong style={{ color: 'var(--primary)' }}>{formatCurrency(totalSpendAll)}</strong>
+                </div>
+              </div>
+
+              <div className="ai-recent-pick-title">
+                Chọn nhanh một hóa đơn để xem ảnh gốc &amp; hỏi chi tiết:
+              </div>
+              <div className="ai-recent-pick-list">
+                {invoices.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '24px 12px', color: 'var(--text-muted)', fontSize: '13px' }}>
+                    Chưa có hóa đơn nào trong hệ thống.
+                  </div>
+                ) : (
+                  invoices.slice(0, 6).map((inv) => (
+                    <button
+                      type="button"
+                      key={inv.invoice_id}
+                      className="ai-recent-pick-item"
+                      onClick={() =>
+                        handleInvoiceChange({ target: { value: inv.invoice_id } })
+                      }
+                    >
+                      <div className="ai-pick-icon">
+                        <Receipt size={16} strokeWidth={1.75} />
+                      </div>
+                      <div className="ai-pick-info">
+                        <strong>{inv.store_name || 'Cửa hàng'}</strong>
+                        <span>{inv.date || 'N/A'}</span>
+                      </div>
+                      <span className="ai-pick-amount">{formatCurrency(inv.total_amount)}</span>
+                    </button>
+                  ))
+                )}
               </div>
             </div>
           )}
-
-          <div ref={messagesEndRef} />
         </div>
 
-        {/* Quick Suggestion Chips */}
-        <div className="chat-quick-chips">
-          <span className="chat-chips-label">💡 {lang === 'vi' ? 'Gợi ý:' : 'Quick ask:'}</span>
-          <div className="chat-chips-scroll">
-            {currentPrompts.map((prompt, pIdx) => (
-              <button
-                key={pIdx}
-                type="button"
-                className="chat-chip-btn"
-                onClick={() => handleSendPrompt(prompt)}
-                disabled={loading}
-              >
-                {prompt}
-              </button>
-            ))}
+        {/* RIGHT COLUMN (60%): Chat Conversation Window */}
+        <div className="chat-window-card ai-chat-col">
+          {/* Messages Area */}
+          <div className="chat-messages-container">
+            {messages.map((msg, i) => {
+              const msgText = msg.content || msg.text || '';
+              const isUser = msg.role === 'user';
+              return (
+                <div
+                  key={i}
+                  className={`chat-message-row ${isUser ? 'user-side' : 'ai-side'}`}
+                >
+                  <div className="chat-avatar-bubble">
+                    {isUser ? (
+                      <User size={18} strokeWidth={1.75} />
+                    ) : (
+                      <Bot size={18} strokeWidth={1.75} />
+                    )}
+                  </div>
+                  <div className="chat-speech-bubble markdown-body">
+                    {!isUser ? (
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {msgText}
+                      </ReactMarkdown>
+                    ) : (
+                      <p style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{msgText}</p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {loading && (
+              <div className="chat-message-row ai-side">
+                <div className="chat-avatar-bubble ai-pulse">
+                  <Bot size={18} strokeWidth={1.75} />
+                </div>
+                <div className="chat-speech-bubble typing-bubble">
+                  <span className="chat-dot"></span>
+                  <span className="chat-dot"></span>
+                  <span className="chat-dot"></span>
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
           </div>
+
+          {/* Quick Suggestion Pills (Wrapping cleanly, no ugly horizontal scrollbar) */}
+          <div className="chat-quick-chips">
+            <span className="chat-chips-label" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+              <Lightbulb size={14} strokeWidth={1.75} style={{ color: 'var(--primary)' }} />
+              Gợi ý:
+            </span>
+            <div className="chat-chips-wrap">
+              {quickQuestions.map((q, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => sendQuestion(q)}
+                  disabled={loading}
+                  className="chat-chip-btn"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Input Bar */}
+          <form onSubmit={handleSubmit} className="chat-input-bar">
+            <input
+              type="text"
+              className="chat-text-input"
+              placeholder={
+                currentInvoiceId
+                  ? 'Nhập câu hỏi về hóa đơn này (mặt hàng, thuế, mã số thuế, số tiền...)...'
+                  : 'Nhập câu hỏi của bạn (VD: Tổng chi tiêu tháng này là bao nhiêu?)...'
+              }
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              disabled={loading}
+            />
+            <button
+              type="submit"
+              className={`chat-send-btn ${input.trim() && !loading ? 'active' : ''}`}
+              disabled={loading || !input.trim()}
+              title="Gửi câu hỏi"
+            >
+              <Send size={17} strokeWidth={1.75} />
+            </button>
+          </form>
         </div>
-        
-        {/* Chat Input Bar */}
-        <form onSubmit={handleSend} className="chat-input-bar">
-          <input 
-            type="text" 
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            disabled={loading}
-            placeholder={currentInvoiceId 
-              ? (lang === 'vi' ? 'Nhập câu hỏi về hóa đơn này (mặt hàng, ngày tháng, số tiền...)...' : 'Ask anything about this invoice (items, dates, amount...)...') 
-              : (lang === 'vi' ? 'Hỏi bất kỳ điều gì trên toàn bộ hóa đơn (VD: Tổng chi tiêu, món đắt nhất...)...' : 'Ask anything across all invoices (e.g., total spending, highest bill...)...')}
-            className="chat-text-input"
-          />
-          <button 
-            type="submit" 
-            disabled={!input.trim() || loading}
-            className={`chat-send-btn ${input.trim() && !loading ? 'active' : ''}`}
-            title={lang === 'vi' ? 'Gửi câu hỏi' : 'Send'}
-          >
-            ➤
-          </button>
-        </form>
       </div>
 
-      {/* History Sessions Drawer (Offcanvas Slide-over) */}
+      {/* Slide-out Chat History Drawer */}
       {showHistoryDrawer && (
-        <div className="chat-drawer-overlay animate-fade-in" onClick={() => setShowHistoryDrawer(false)}>
-          <div className="chat-drawer-panel" onClick={e => e.stopPropagation()}>
-            {/* Drawer Header */}
+        <div
+          className="chat-drawer-overlay"
+          onClick={() => setShowHistoryDrawer(false)}
+        >
+          <div
+            className="chat-drawer-panel"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="chat-drawer-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '20px' }}>📜</span>
-                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: '700' }}>
-                  {lang === 'vi' ? 'Lịch sử cuộc trò chuyện' : 'Chat History'}
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <History size={18} strokeWidth={1.75} style={{ color: 'var(--primary)' }} />
+                  Lịch sử trò chuyện AI
                 </h3>
+                <p style={{ margin: '4px 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+                  Chọn một phiên bên dưới để xem lại hoặc tiếp tục hội thoại
+                </p>
               </div>
-              <button 
-                type="button" 
-                className="btn btn-icon btn-sm"
+              <button
+                className="modal-close"
                 onClick={() => setShowHistoryDrawer(false)}
+                title="Đóng"
               >
-                ✕
+                <X size={16} strokeWidth={1.75} />
               </button>
             </div>
 
-            {/* Drawer Body: Sessions List */}
             <div className="chat-drawer-body">
-              {sessionsLoading ? (
-                <div style={{ padding: '30px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                  ⏳ {lang === 'vi' ? 'Đang tải lịch sử...' : 'Loading sessions...'}
+              {historyLoading ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-muted)' }}>
+                  Đang tải lịch sử...
                 </div>
-              ) : sessions.length > 0 ? (
+              ) : sessions.length === 0 ? (
+                <div className="chat-drawer-empty">
+                  <div style={{ display: 'inline-flex', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                    <MessageSquare size={36} strokeWidth={1.5} />
+                  </div>
+                  <h4>Chưa có lịch sử trò chuyện</h4>
+                  <p>Các câu hỏi và câu trả lời của bạn với AI sẽ tự động được lưu tại đây.</p>
+                </div>
+              ) : (
                 <div className="chat-sessions-list">
                   {sessions.map((sess) => {
-                    const isActive = activeSessionKey === sess.session_id;
-                    const isGlobal = sess.session_id === 'GLOBAL';
+                    const sessKey = sess.session_id || sess.scope_key || 'GLOBAL';
+                    const activeKey = currentInvoiceId ? currentInvoiceId : 'GLOBAL';
+                    const isActive = sessKey === activeKey;
+                    const isGlobal = sessKey === 'GLOBAL' || sessKey === '__global__';
+                    const msgCount = sess.msg_count ?? (sess.messages || []).length;
+                    const previewText = sess.last_message || 'Cuộc trò chuyện';
+
                     return (
-                      <div 
-                        key={sess.session_id} 
+                      <div
+                        key={sessKey}
                         className={`chat-session-card ${isActive ? 'is-active' : ''}`}
-                        onClick={() => handleSelectSession(sess.session_id)}
+                        onClick={() => handleSelectSession(sess)}
                       >
-                        <div className="chat-sess-icon">
-                          {isGlobal ? '🌐' : '🧾'}
+                        <div className="chat-sess-icon" style={{ color: 'var(--primary)' }}>
+                          {isGlobal ? (
+                            <Globe size={18} strokeWidth={1.75} />
+                          ) : (
+                            <Receipt size={18} strokeWidth={1.75} />
+                          )}
                         </div>
                         <div className="chat-sess-info">
                           <div className="chat-sess-top">
                             <span className="chat-sess-name">
-                              {sess.session_name || (isGlobal ? 'Hỏi đáp Tổng quát' : sess.session_id)}
+                              {sess.session_name || sess.store_name || (isGlobal ? 'Hỏi đáp Tổng quát' : sessKey)}
                             </span>
-                            <span className="chat-sess-badge">
-                              {sess.msg_count} {lang === 'vi' ? 'tin nhắn' : 'msgs'}
-                            </span>
+                            <span className="chat-sess-badge">{msgCount} tin</span>
                           </div>
                           <p className="chat-sess-preview">
-                            {sess.last_message ? sess.last_message.substring(0, 75) + '...' : 'Trò chuyện...'}
+                            {previewText}
                           </p>
                         </div>
-
-                        {/* Delete Session Button */}
-                        <button 
-                          type="button" 
+                        <button
+                          type="button"
                           className="chat-sess-del-btn"
-                          title={lang === 'vi' ? 'Xóa cuộc trò chuyện này' : 'Delete conversation'}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setConfirmModal({
-                              mode: 'single',
-                              id: sess.session_id,
-                              title: lang === 'vi' 
-                                ? `Xóa cuộc trò chuyện '${sess.session_name}'?` 
-                                : `Delete '${sess.session_name}'?`
-                            });
-                          }}
+                          title="Xóa phiên này"
+                          onClick={(e) => handleDeleteSession(e, sessKey)}
                         >
-                          🗑️
+                          <Trash2 size={15} strokeWidth={1.75} />
                         </button>
                       </div>
                     );
                   })}
                 </div>
-              ) : (
-                <div className="chat-drawer-empty">
-                  <span style={{ fontSize: '36px' }}>💬</span>
-                  <h4>{lang === 'vi' ? 'Chưa có lịch sử trò chuyện' : 'No chat history'}</h4>
-                  <p>{lang === 'vi' ? 'Các câu hỏi và câu trả lời của bạn sẽ được lưu tại đây.' : 'Your chat sessions will appear here.'}</p>
-                </div>
               )}
             </div>
 
-            {/* Drawer Footer */}
             {sessions.length > 0 && (
               <div className="chat-drawer-footer">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   className="btn btn-outline-danger btn-sm"
-                  style={{ width: '100%', justifyContent: 'center' }}
-                  onClick={() => {
-                    setConfirmModal({
-                      mode: 'all',
-                      title: lang === 'vi' 
-                        ? 'Xóa toàn bộ lịch sử tất cả các cuộc trò chuyện?' 
-                        : 'Delete all chat history?'
-                    });
-                  }}
+                  style={{ width: '100%' }}
+                  onClick={handleClearAllHistory}
                 >
-                  🔥 {lang === 'vi' ? 'Xóa tất cả lịch sử chat' : 'Clear All Chat History'}
+                  <Trash2 size={15} strokeWidth={1.75} />
+                  Xóa toàn bộ lịch sử chat
                 </button>
               </div>
             )}
@@ -498,37 +747,10 @@ export default function AIChat() {
         </div>
       )}
 
-      {/* Confirmation Modal */}
-      {confirmModal && (
-        <div className="modal-overlay animate-fade-in" onClick={() => setConfirmModal(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '420px', textAlign: 'center' }}>
-            <div style={{ fontSize: '36px', marginBottom: '8px' }}>⚠️</div>
-            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '10px' }}>
-              {confirmModal.title}
-            </h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', lineHeight: '1.5', marginBottom: '22px' }}>
-              {lang === 'vi' 
-                ? 'Hành động này sẽ xóa toàn bộ tin nhắn trong cuộc trò chuyện và không thể hoàn tác. Bạn có chắc chắn muốn xóa?' 
-                : 'This action will delete all messages in this conversation and cannot be undone. Are you sure?'}
-            </p>
-            <div className="modal-actions" style={{ justifyContent: 'center', gap: '10px' }}>
-              <button 
-                type="button" 
-                className="btn btn-ghost" 
-                onClick={() => setConfirmModal(null)}
-              >
-                {lang === 'vi' ? 'Hủy bỏ' : 'Cancel'}
-              </button>
-              <button 
-                type="button" 
-                className="btn btn-danger" 
-                style={{ background: '#DC2626', color: '#FFFFFF', padding: '8px 18px' }}
-                onClick={executeConfirmModal}
-              >
-                {lang === 'vi' ? 'Xác nhận xóa' : 'Confirm Delete'}
-              </button>
-            </div>
-          </div>
+      {toastMsg && (
+        <div className="chat-toast">
+          <CheckCircle2 size={16} strokeWidth={1.75} />
+          <span>{toastMsg}</span>
         </div>
       )}
     </div>

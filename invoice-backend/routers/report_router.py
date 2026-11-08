@@ -1,8 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 import sqlite3
-from typing import Optional
 from pydantic import BaseModel
-from auth import get_current_user, get_current_admin
+from auth import DB_NAME, get_current_user, get_current_admin
 from schemas import ReportCreate
 
 router = APIRouter()
@@ -11,7 +10,7 @@ class ReportStatusUpdate(BaseModel):
     status: str  # 'new', 'processing', 'resolved'
 
 def init_report_db():
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS reports (
@@ -40,7 +39,7 @@ init_report_db()
 @router.post("/api/reports", tags=["Reports"], summary="Gửi báo cáo lỗi")
 @router.post("/reports", tags=["Reports"], summary="Gửi báo cáo lỗi (alias)")
 async def create_report(report: ReportCreate, current_user: dict = Depends(get_current_user)):
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     inv_id = getattr(report, "invoice_id", None)
     cursor.execute("INSERT INTO reports (user_id, description, invoice_id, status) VALUES (?, ?, ?, 'new')", 
@@ -52,7 +51,7 @@ async def create_report(report: ReportCreate, current_user: dict = Depends(get_c
 @router.get("/api/admin/reports", tags=["Admin"], summary="Lấy danh sách báo cáo lỗi")
 @router.get("/admin/reports", tags=["Admin"], summary="Lấy danh sách báo cáo lỗi (alias)")
 async def get_reports(admin: dict = Depends(get_current_admin)):
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute('''
         SELECT r.id, r.description, r.created_at, u.username, u.email, u.full_name, r.invoice_id, r.status
@@ -82,7 +81,7 @@ async def get_reports(admin: dict = Depends(get_current_admin)):
 async def update_report_status(report_id: int, payload: ReportStatusUpdate, admin: dict = Depends(get_current_admin)):
     if payload.status not in ["new", "processing", "resolved"]:
         raise HTTPException(status_code=400, detail="Trạng thái không hợp lệ. Chỉ chấp nhận: new, processing, resolved")
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("UPDATE reports SET status = ? WHERE id = ?", (payload.status, report_id))
     conn.commit()

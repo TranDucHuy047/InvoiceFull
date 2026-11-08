@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from fastapi.security import OAuth2PasswordRequestForm
-from datetime import datetime, timedelta
+from datetime import timedelta
+import os
+import json
 import sqlite3
 from email_service import send_otp_email
 import random
@@ -9,6 +11,7 @@ from typing import Optional
 
 # Import các hàm bảo mật từ file auth.py
 from auth import (
+    DB_NAME,
     get_password_hash, 
     verify_password, 
     create_access_token, 
@@ -28,7 +31,7 @@ from schemas import (
 )
 
 # Import client Weaviate và DB chat từ database.py để dùng cho API thống kê
-from database import delete_all_invoices_for_user, client, chat_history_db
+from database import delete_all_invoices_for_user, client, chat_history_db, CHAT_HISTORY_FILE
 
 # Khởi tạo Router
 router = APIRouter()
@@ -85,7 +88,7 @@ async def send_otp(request: OtpRequest):
         raise HTTPException(status_code=400, detail="Email không được để trống.")
         
     # KIỂM TRA TRÙNG LẶP TRƯỚC KHI GỬI OTP
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     if username:
         cursor.execute("SELECT id FROM users WHERE username = ? OR email = ?", (username, contact))
@@ -173,7 +176,7 @@ async def change_password(request: ChangePassword, current_user: dict = Depends(
         raise HTTPException(status_code=400, detail="Mật khẩu cũ không chính xác!")
     
     new_hashed_pw = get_password_hash(request.new_password)
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("UPDATE users SET hashed_password = ? WHERE username = ?", (new_hashed_pw, current_user["username"]))
     conn.commit()
@@ -185,7 +188,7 @@ async def change_password(request: ChangePassword, current_user: dict = Depends(
 @router.put("/api/auth/profile", tags=["Auth"], summary="Cập nhật thông tin cá nhân")
 async def update_profile(request: UserProfileUpdate, current_user: dict = Depends(get_current_user)):
     try:
-        conn = sqlite3.connect("users.db")
+        conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
         
         cursor.execute("SELECT id FROM users WHERE email = ? AND id != ?", (request.email, current_user["id"]))
@@ -193,11 +196,19 @@ async def update_profile(request: UserProfileUpdate, current_user: dict = Depend
             conn.close()
             raise HTTPException(status_code=400, detail="Email này đã được sử dụng bởi tài khoản khác.")
             
-        cursor.execute("UPDATE users SET email = ? WHERE id = ?", (request.email, current_user["id"]))
+        if request.full_name is not None:
+            cursor.execute(
+                "UPDATE users SET full_name = ?, email = ? WHERE id = ?",
+                (request.full_name.strip(), request.email.strip(), current_user["id"])
+            )
+        else:
+            cursor.execute("UPDATE users SET email = ? WHERE id = ?", (request.email.strip(), current_user["id"]))
         conn.commit()
         conn.close()
         
         return {"status": 200, "message": "Cập nhật thông tin cá nhân thành công!"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -229,7 +240,7 @@ async def logout(current_user: dict = Depends(get_current_user)):
 @router.get("/api/admin/users", tags=["Admin"], summary="Lấy danh sách tất cả tài khoản (Có tìm kiếm)")
 async def get_all_users(search: Optional[str] = None, admin: dict = Depends(get_current_admin)):
     """Hỗ trợ lọc theo username hoặc email qua query param 'search'"""
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
     if search:
@@ -268,7 +279,7 @@ async def toggle_lock_user(
     if user_id == admin["id"]:
         raise HTTPException(status_code=400, detail="Không thể tự khóa tài khoản Admin của chính mình.")
         
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("UPDATE users SET is_locked = ? WHERE id = ?", (int(lock_status), user_id))
     
@@ -292,7 +303,7 @@ async def change_user_role(user_id: int, new_role: str, admin: dict = Depends(ge
     if user_id == admin["id"]:
         raise HTTPException(status_code=400, detail="Không thể tự đổi quyền của chính mình.")
         
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute("UPDATE users SET role = ? WHERE id = ?", (new_role, user_id))
     
@@ -312,7 +323,7 @@ async def delete_user(user_id: int, admin: dict = Depends(get_current_admin)):
     if user_id == admin["id"]:
         raise HTTPException(status_code=400, detail="Không thể tự xóa tài khoản Admin của chính mình.")
         
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
     cursor.execute("SELECT id, username, role FROM users WHERE id = ?", (user_id,))
@@ -336,12 +347,12 @@ async def delete_user(user_id: int, admin: dict = Depends(get_current_admin)):
         str_uid = str(user_id)
         if str_uid in chat_history_db:
             del chat_history_db[str_uid]
-        if os.path.exists("chat_history.json"):
-            with open("chat_history.json", "r", encoding="utf-8") as f:
+        if os.path.exists(CHAT_HISTORY_FILE):
+            with open(CHAT_HISTORY_FILE, "r", encoding="utf-8") as f:
                 chats = json.load(f)
             if str_uid in chats:
                 del chats[str_uid]
-                with open("chat_history.json", "w", encoding="utf-8") as f:
+                with open(CHAT_HISTORY_FILE, "w", encoding="utf-8") as f:
                     json.dump(chats, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"[!] Lỗi xóa lịch sử chat của user {user_id}: {e}")
@@ -365,7 +376,6 @@ async def delete_user(user_id: int, admin: dict = Depends(get_current_admin)):
 @router.get("/api/admin/invoices", tags=["Admin"], summary="Lấy danh sách tất cả hóa đơn toàn hệ thống")
 async def get_all_system_invoices(admin: dict = Depends(get_current_admin)):
     """API cho màn hình Quản lý Hóa đơn của Admin (chỉ xem metadata)"""
-    from database import delete_all_invoices_for_user, client
     try:
         query = client.query.get("Invoice", ["invoice_id", "store_name", "date", "total_amount", "user_id"])
         query = query.with_where({"path": ["is_deleted"], "operator": "NotEqual", "valueBoolean": True})
@@ -376,7 +386,7 @@ async def get_all_system_invoices(admin: dict = Depends(get_current_admin)):
             invoices = query["data"]["Get"]["Invoice"]
             
         # Lấy thêm tên user để hiển thị
-        conn = sqlite3.connect("users.db")
+        conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
         cursor.execute("SELECT id, username, email FROM users")
         users_dict = {row[0]: row[1] for row in cursor.fetchall()}
@@ -398,7 +408,7 @@ async def get_all_system_invoices(admin: dict = Depends(get_current_admin)):
 @router.get("/api/admin/statistics", tags=["Admin"], summary="Lấy số liệu thống kê tổng quan")
 async def get_admin_statistics(admin: dict = Depends(get_current_admin)):
     # 1. Đếm tổng số User
-    conn = sqlite3.connect("users.db", isolation_level="DEFERRED")
+    conn = sqlite3.connect(DB_NAME, isolation_level="DEFERRED")
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM users")
     total_users = cursor.fetchone()[0]
@@ -435,6 +445,8 @@ async def get_admin_statistics(admin: dict = Depends(get_current_admin)):
         "data": {
             "total_users": total_users,
             "total_invoices": total_invoices,
-            "total_chat_queries": total_chats
+            "total_chat_queries": total_chats,
+            "total_chats": total_chats,
+            "total_reports": total_reports
         }
     }

@@ -3,7 +3,7 @@ import Header from '../components/Header';
 import axiosClient from '../api/axiosClient';
 import { 
   Search, Download, Shield, ShieldCheck, 
-  Trash2, Lock, Unlock, AlertTriangle, X 
+  Trash2, Lock, Unlock, AlertTriangle, CheckCircle2, X 
 } from 'lucide-react';
 
 export default function UserManagement() {
@@ -169,7 +169,11 @@ export default function UserManagement() {
           fontSize: '14px',
           animation: 'fadeIn 0.3s ease'
         }}>
-          <span>{toast.type === 'error' ? '⚠️' : (toast.type === 'warning' ? '🔔' : '✅')}</span>
+          {toast.type === 'error' || toast.type === 'warning' ? (
+            <AlertTriangle size={18} />
+          ) : (
+            <CheckCircle2 size={18} />
+          )}
           <span>{toast.message}</span>
         </div>
       )}

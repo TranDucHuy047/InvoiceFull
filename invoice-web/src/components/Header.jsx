@@ -1,257 +1,387 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
+import { getInvoices, getTrashInvoices } from '../services/api';
+import {
+  Bell,
+  BellOff,
+  Search,
+  ChevronRight,
+  ChevronDown,
+  User,
+  Settings,
+  LogOut,
+  Receipt,
+  CheckCircle2,
+  Trash2,
+  Sparkles,
+  Home,
+} from 'lucide-react';
 
 export default function Header() {
-  const { user, logoutUser } = useAuth();
-  const { t, lang } = useLanguage();
+  const { user, logout } = useAuth();
+  const { t } = useLanguage();
   const navigate = useNavigate();
-  
-  // User Dropdown state
-  const [showDropdown, setShowDropdown] = useState(false);
-  const dropdownRef = useRef(null);
+  const location = useLocation();
 
-  // Notification Dropdown state
-  const [showNotif, setShowNotif] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [quickQuery, setQuickQuery] = useState('');
+
+  const dropdownRef = useRef(null);
   const notifRef = useRef(null);
 
-  // Default system notifications
-  const [notifications, setNotifications] = useState(() => {
-    try {
-      const saved = localStorage.getItem('app_user_notifications');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
+  const getInitials = (name) => {
+    if (!name) return 'U';
+    const parts = name.trim().split(' ');
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
     }
-    return [
-      {
-        id: 'notif-1',
-        type: 'invoice',
-        title: lang === 'vi' ? 'Hóa đơn đã được đồng bộ' : 'Invoices synchronized',
-        message: lang === 'vi' ? 'Các hóa đơn mới đã được phân tích và trích xuất dữ liệu thành công.' : 'New invoices were analyzed and extracted successfully.',
-        time: lang === 'vi' ? 'Vừa xong' : 'Just now',
-        read: false,
-        link: '/history',
-        icon: '🧾'
-      },
-      {
-        id: 'notif-2',
-        type: 'security',
-        title: lang === 'vi' ? 'Bảo mật tài khoản kích hoạt' : 'Privacy shield active',
-        message: lang === 'vi' ? 'Cơ chế cô lập dữ liệu người dùng đa tài khoản đang hoạt động an toàn.' : 'Multi-tenant isolation and data privacy are active.',
-        time: lang === 'vi' ? '10 phút trước' : '10m ago',
-        read: false,
-        link: '/settings',
-        icon: '🔒'
-      },
-      {
-        id: 'notif-3',
-        type: 'trash',
-        title: lang === 'vi' ? 'Lưu ý thùng rác' : 'Trash notice',
-        message: lang === 'vi' ? 'Các hóa đơn trong thùng rác sẽ được lưu trữ 30 ngày trước khi dọn sạch.' : 'Items in trash will be auto-purged after 30 days.',
-        time: lang === 'vi' ? 'Hôm nay' : 'Today',
-        read: true,
-        link: '/trash',
-        icon: '🗑️'
-      },
-      {
-        id: 'notif-4',
-        type: 'ai',
-        title: lang === 'vi' ? 'Trợ lý AI sẵn sàng' : 'AI Assistant ready',
-        message: lang === 'vi' ? 'Bạn có thể hỏi AI về tổng chi tiêu, quán ăn, hoặc so sánh giá tiền.' : 'Ask AI questions about your expenses and stores anytime.',
-        time: lang === 'vi' ? 'Hôm qua' : 'Yesterday',
-        read: true,
+    return name[0].toUpperCase();
+  };
+
+  // Breadcrumb mapping
+  const getBreadcrumbInfo = () => {
+    const path = location.pathname;
+    if (path === '/') return { section: 'Bảng điều khiển', current: t('overview') };
+    if (path === '/scan') return { section: 'Quản lý chứng từ', current: t('scan') };
+    if (path === '/history') return { section: 'Quản lý chứng từ', current: t('history') };
+    if (path.startsWith('/history/')) return { section: t('history'), parentPath: '/history', current: t('invoice_detail_title') };
+    if (path === '/trash') return { section: 'Quản lý chứng từ', current: t('trash') };
+    if (path === '/ai-chat') return { section: 'Trợ lý thông minh', current: t('ai_chat') };
+    if (path === '/profile') return { section: 'Tài khoản', current: t('profile') };
+    if (path === '/settings') return { section: 'Hệ thống', current: t('settings') };
+    if (path === '/report') return { section: 'Hỗ trợ', current: t('report') };
+    return { section: 'Hệ thống', current: 'Tổng quan' };
+  };
+
+  const breadcrumb = getBreadcrumbInfo();
+
+  const handleQuickSearch = (e) => {
+    e.preventDefault();
+    const trimmed = quickQuery.trim();
+    if (trimmed) {
+      navigate(`/history?q=${encodeURIComponent(trimmed)}`);
+    } else {
+      navigate('/history');
+    }
+  };
+
+  // Build smart notifications from real invoice & trash data + localStorage read state
+  const loadNotifications = async () => {
+    const notifsEnabled = localStorage.getItem('app_notifications') !== 'false';
+    if (!notifsEnabled) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
+
+    try {
+      const readIds = JSON.parse(localStorage.getItem('read_notif_ids') || '[]');
+      const [invRes, trashRes] = await Promise.allSettled([
+        getInvoices({ limit: 5 }),
+        getTrashInvoices(),
+      ]);
+
+      const items = [];
+
+      if (invRes.status === 'fulfilled') {
+        const invoices = invRes.value.data?.data || invRes.value.data || [];
+        invoices.slice(0, 4).forEach((inv) => {
+          const id = `inv_${inv.invoice_id}`;
+          items.push({
+            id,
+            iconType: inv.is_submitted ? 'verified' : 'invoice',
+            title: inv.is_submitted ? 'Hóa đơn đã xác nhận' : 'Hóa đơn mới được quét',
+            message: `${inv.store_name || 'Cửa hàng'} — ${Number(inv.total_amount || 0).toLocaleString('vi-VN')} đ`,
+            time: inv.date || 'Gần đây',
+            link: `/history/${inv.invoice_id}`,
+            read: readIds.includes(id),
+          });
+        });
+      }
+
+      if (trashRes.status === 'fulfilled') {
+        const trashed = trashRes.value.data?.data || trashRes.value.data || [];
+        if (trashed.length > 0) {
+          const id = `trash_count_${trashed.length}`;
+          items.push({
+            id,
+            iconType: 'trash',
+            title: 'Lịch sử xóa',
+            message: `Đang có ${trashed.length} hóa đơn trong thùng rác chờ dọn dẹp`,
+            time: 'Hệ thống',
+            link: '/trash',
+            read: readIds.includes(id),
+          });
+        }
+      }
+
+      const welcomeId = 'sys_welcome_v1';
+      items.push({
+        id: welcomeId,
+        iconType: 'ai',
+        title: 'Trợ lý AI sẵn sàng',
+        message: 'Bấm vào mục Hỏi AI để tra cứu và phân tích chi tiêu thông minh.',
+        time: 'Hệ thống',
         link: '/ai-chat',
-        icon: '✨'
-      }
-    ];
-  });
+        read: readIds.includes(welcomeId),
+      });
 
-  // Save notifications to localStorage when changed
-  useEffect(() => {
-    try {
-      localStorage.setItem('app_user_notifications', JSON.stringify(notifications));
-    } catch (e) {
-      console.error(e);
+      setNotifications(items);
+      setUnreadCount(items.filter((n) => !n.read).length);
+    } catch (err) {
+      console.error('Lỗi tải thông báo:', err);
     }
-  }, [notifications]);
+  };
 
-  // Click outside listener for both dropdowns
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setShowDropdown(false);
+    loadNotifications();
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setDropdownOpen(false);
       }
-      if (notifRef.current && !notifRef.current.contains(event.target)) {
-        setShowNotif(false);
+      if (notifRef.current && !notifRef.current.contains(e.target)) {
+        setNotifOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const unreadCount = notifications.filter(n => !n.read).length;
-
-  const handleMarkAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-  };
-
-  const handleClearAll = () => {
-    setNotifications([]);
-  };
-
-  const handleNotificationClick = (item) => {
-    // Mark this item as read
-    setNotifications(prev => prev.map(n => n.id === item.id ? { ...n, read: true } : n));
-    setShowNotif(false);
-    if (item.link) {
-      navigate(item.link);
+  const handleToggleNotif = () => {
+    const nextState = !notifOpen;
+    setNotifOpen(nextState);
+    setDropdownOpen(false);
+    if (nextState) {
+      loadNotifications();
     }
   };
 
-  const getInitials = (name) => {
-    if (!name) return 'MA';
-    return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+  const markAsRead = (id) => {
+    const readIds = JSON.parse(localStorage.getItem('read_notif_ids') || '[]');
+    if (!readIds.includes(id)) {
+      const updated = [...readIds, id];
+      localStorage.setItem('read_notif_ids', JSON.stringify(updated));
+    }
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    );
+    setUnreadCount((prev) => Math.max(0, prev - 1));
+  };
+
+  const markAllAsRead = () => {
+    const allIds = notifications.map((n) => n.id);
+    const existing = JSON.parse(localStorage.getItem('read_notif_ids') || '[]');
+    const merged = Array.from(new Set([...existing, ...allIds]));
+    localStorage.setItem('read_notif_ids', JSON.stringify(merged));
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setUnreadCount(0);
+  };
+
+  const clearAllNotifications = () => {
+    markAllAsRead();
+    setNotifications([]);
+    setUnreadCount(0);
+  };
+
+  const handleNotifClick = (notif) => {
+    markAsRead(notif.id);
+    setNotifOpen(false);
+    if (notif.link) {
+      navigate(notif.link);
+    }
   };
 
   const handleLogout = () => {
-    logoutUser();
+    setDropdownOpen(false);
+    logout();
     navigate('/login');
+  };
+
+  const renderNotifIcon = (iconType) => {
+    switch (iconType) {
+      case 'verified':
+        return <CheckCircle2 size={18} strokeWidth={1.75} style={{ color: 'var(--success)' }} />;
+      case 'trash':
+        return <Trash2 size={18} strokeWidth={1.75} style={{ color: 'var(--danger)' }} />;
+      case 'ai':
+        return <Sparkles size={18} strokeWidth={1.75} style={{ color: 'var(--primary)' }} />;
+      default:
+        return <Receipt size={18} strokeWidth={1.75} style={{ color: 'var(--primary)' }} />;
+    }
   };
 
   return (
     <header className="top-header">
-      {/* Notification Bell with Dropdown */}
-      <div className="header-notif-container" ref={notifRef} style={{ position: 'relative' }}>
-        <button 
-          className={`header-notification ${showNotif ? 'is-active' : ''}`}
-          title={t('notifications')} 
-          type="button"
-          onClick={() => {
-            setShowNotif(!showNotif);
-            setShowDropdown(false);
-          }}
-          aria-expanded={showNotif}
-        >
-          <span className="notif-bell-icon">🔔</span>
-          {unreadCount > 0 && <span className="notif-pulse-dot"></span>}
-        </button>
+      {/* Left: Dynamic Breadcrumb & Quick Search */}
+      <div className="top-header-left">
+        <nav className="header-breadcrumb" aria-label="Breadcrumb">
+          <Link to="/" className="header-bc-home" title="Trang tổng quan">
+            <Home size={16} strokeWidth={1.75} />
+          </Link>
+          <ChevronRight size={14} strokeWidth={1.75} className="header-bc-sep" />
+          {breadcrumb.parentPath ? (
+            <Link to={breadcrumb.parentPath} className="header-bc-section">
+              {breadcrumb.section}
+            </Link>
+          ) : (
+            <span className="header-bc-section">{breadcrumb.section}</span>
+          )}
+          <ChevronRight size={14} strokeWidth={1.75} className="header-bc-sep" />
+          <span className="header-bc-current">{breadcrumb.current}</span>
+        </nav>
 
-        {showNotif && (
-          <div className="notif-dropdown animate-fade-in">
-            {/* Dropdown Header */}
-            <div className="notif-dropdown-header">
-              <div className="notif-header-title-wrap">
-                <h4>{lang === 'vi' ? 'Thông báo' : 'Notifications'}</h4>
-                {unreadCount > 0 && (
-                  <span className="notif-unread-badge">
-                    {unreadCount} {lang === 'vi' ? 'mới' : 'new'}
-                  </span>
+        <form className="header-quick-search" onSubmit={handleQuickSearch}>
+          <Search size={16} strokeWidth={1.75} className="header-search-icon" />
+          <input
+            type="text"
+            placeholder="Tìm nhanh cửa hàng, mã HĐ..."
+            value={quickQuery}
+            onChange={(e) => setQuickQuery(e.target.value)}
+          />
+        </form>
+      </div>
+
+      {/* Right: Notification Bell + User Profile Pill */}
+      <div className="top-header-right">
+        <div style={{ position: 'relative' }} ref={notifRef}>
+          <button
+            className="header-notification"
+            title={t('notifications')}
+            onClick={handleToggleNotif}
+          >
+            <span className="notif-bell-icon" style={{ display: 'flex' }}>
+              <Bell size={19} strokeWidth={1.75} />
+            </span>
+            {unreadCount > 0 && <span className="notif-pulse-dot"></span>}
+          </button>
+
+          {notifOpen && (
+            <div className="notif-dropdown">
+              <div className="notif-dropdown-header">
+                <div className="notif-header-title-wrap">
+                  <h4>{t('notifications') || 'Thông báo'}</h4>
+                  {unreadCount > 0 && (
+                    <span className="notif-unread-badge">{unreadCount} mới</span>
+                  )}
+                </div>
+                {notifications.length > 0 && unreadCount > 0 && (
+                  <button className="notif-mark-read-btn" onClick={markAllAsRead}>
+                    Đánh dấu đã đọc
+                  </button>
                 )}
               </div>
-              {unreadCount > 0 && (
-                <button 
-                  type="button" 
-                  className="notif-mark-read-btn"
-                  onClick={handleMarkAllAsRead}
-                  title={lang === 'vi' ? 'Đánh dấu tất cả đã đọc' : 'Mark all as read'}
-                >
-                  ✓ {lang === 'vi' ? 'Đã đọc tất cả' : 'Mark read'}
-                </button>
-              )}
-            </div>
 
-            {/* Notification List */}
-            <div className="notif-dropdown-body">
-              {notifications.length > 0 ? (
-                notifications.map((item) => (
-                  <div 
-                    key={item.id} 
-                    className={`notif-item ${!item.read ? 'is-unread' : ''}`}
-                    onClick={() => handleNotificationClick(item)}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <div className="notif-item-icon">
-                      {item.icon || '🔔'}
-                    </div>
-                    <div className="notif-item-content">
-                      <div className="notif-item-top">
-                        <span className="notif-item-title">{item.title}</span>
-                        {!item.read && <span className="notif-item-unread-dot"></span>}
-                      </div>
-                      <p className="notif-item-msg">{item.message}</p>
-                      <span className="notif-item-time">{item.time}</span>
-                    </div>
+              <div className="notif-dropdown-body">
+                {notifications.length === 0 ? (
+                  <div className="notif-empty-state">
+                    <span style={{ display: 'inline-flex', color: 'var(--text-muted)' }}>
+                      <BellOff size={28} strokeWidth={1.75} />
+                    </span>
+                    <p>Không có thông báo mới</p>
                   </div>
-                ))
-              ) : (
-                <div className="notif-empty-state">
-                  <span style={{ fontSize: '32px' }}>🎉</span>
-                  <p>{lang === 'vi' ? 'Bạn đã đọc hết tất cả thông báo!' : 'All caught up! No notifications.'}</p>
+                ) : (
+                  notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      className={`notif-item ${!n.read ? 'is-unread' : ''}`}
+                      onClick={() => handleNotifClick(n)}
+                    >
+                      <div className="notif-item-icon">{renderNotifIcon(n.iconType)}</div>
+                      <div className="notif-item-content">
+                        <div className="notif-item-top">
+                          <span className="notif-item-title">{n.title}</span>
+                          {!n.read && <span className="notif-item-unread-dot"></span>}
+                        </div>
+                        <p className="notif-item-msg">{n.message}</p>
+                        <span className="notif-item-time">{n.time}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {notifications.length > 0 && (
+                <div className="notif-dropdown-footer">
+                  <button
+                    className="notif-footer-link"
+                    onClick={() => {
+                      setNotifOpen(false);
+                      navigate('/settings');
+                    }}
+                     style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <Settings size={14} strokeWidth={1.75} />
+                    Cài đặt thông báo
+                  </button>
+                  <button className="notif-clear-btn" onClick={clearAllNotifications}>
+                    Xóa tất cả
+                  </button>
                 </div>
               )}
             </div>
+          )}
+        </div>
 
-            {/* Dropdown Footer */}
-            <div className="notif-dropdown-footer">
-              <button 
-                type="button" 
-                className="notif-footer-link"
+        <div style={{ position: 'relative' }} ref={dropdownRef}>
+          <button
+            type="button"
+            className="header-user-pill"
+            onClick={() => {
+              setDropdownOpen(!dropdownOpen);
+              setNotifOpen(false);
+            }}
+          >
+            <div className="header-avatar">
+              {getInitials(user?.full_name || user?.username)}
+            </div>
+            <div className="header-user-meta">
+              <span className="header-user-name">{user?.full_name || user?.username}</span>
+              <span className="header-user-sub">{user?.email || 'Tài khoản cá nhân'}</span>
+            </div>
+            <ChevronDown size={16} strokeWidth={1.75} className="header-user-chevron" />
+          </button>
+
+          {dropdownOpen && (
+            <div className="avatar-dropdown">
+              <div className="avatar-dropdown-header">
+                <h4>{user?.full_name || user?.username}</h4>
+                <p>{user?.email || ''}</p>
+              </div>
+              <button
+                className="avatar-dropdown-item"
                 onClick={() => {
-                  setShowNotif(false);
+                  setDropdownOpen(false);
+                  navigate('/profile');
+                }}
+              >
+                <User size={17} strokeWidth={1.75} />
+                {t('profile')}
+              </button>
+              <button
+                className="avatar-dropdown-item"
+                onClick={() => {
+                  setDropdownOpen(false);
                   navigate('/settings');
                 }}
               >
-                ⚙️ {lang === 'vi' ? 'Cài đặt thông báo' : 'Notification Settings'}
+                <Settings size={17} strokeWidth={1.75} />
+                {t('settings')}
               </button>
-              {notifications.length > 0 && (
-                <button 
-                  type="button" 
-                  className="notif-clear-btn"
-                  onClick={handleClearAll}
-                >
-                  {lang === 'vi' ? 'Xóa tất cả' : 'Clear all'}
-                </button>
-              )}
+              <button className="avatar-dropdown-item danger" onClick={handleLogout}>
+                <LogOut size={17} strokeWidth={1.75} />
+                {t('logout')}
+              </button>
             </div>
-          </div>
-        )}
-      </div>
-      
-      {/* User Avatar with Dropdown */}
-      <div className="header-avatar-container" ref={dropdownRef} style={{ position: 'relative' }}>
-        <div 
-          className="header-avatar"
-          onClick={() => {
-            setShowDropdown(!showDropdown);
-            setShowNotif(false);
-          }}
-          role="button"
-          tabIndex={0}
-        >
-          {getInitials(user?.full_name || user?.username)}
+          )}
         </div>
-        
-        {showDropdown && (
-          <div className="avatar-dropdown">
-            <div className="avatar-dropdown-header">
-              <h4>{user?.full_name || user?.username || 'User'}</h4>
-              <p>{user?.email || 'user@email.com'}</p>
-            </div>
-            
-            <button className="avatar-dropdown-item" onClick={() => { setShowDropdown(false); navigate('/profile'); }}>
-              <span>👤</span> <span>{t('profile')}</span>
-            </button>
-            <button className="avatar-dropdown-item" onClick={() => { setShowDropdown(false); navigate('/settings'); }}>
-              <span>⚙️</span> <span>{t('settings')}</span>
-            </button>
-            <button className="avatar-dropdown-item danger" onClick={() => { setShowDropdown(false); handleLogout(); }}>
-              <span>🚪</span> <span>{t('logout')}</span>
-            </button>
-          </div>
-        )}
       </div>
     </header>
   );

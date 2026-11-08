@@ -1,179 +1,388 @@
-import { useState, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import { updateProfile } from '../services/api';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useLanguage } from '../contexts/LanguageContext';
+import { useAuth } from '../contexts/AuthContext';
+import { updateProfile, deleteAccount, changePassword } from '../services/api';
+import {
+  User,
+  Mail,
+  Calendar,
+  AtSign,
+  Edit3,
+  Lock,
+  KeyRound,
+  ShieldAlert,
+  Trash2,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  AlertTriangle,
+  X,
+} from 'lucide-react';
 
 export default function Profile() {
-  const { user, setUser, logoutUser } = useAuth();
-  const { lang } = useLanguage();
+  const { user, logout, refreshUser } = useAuth();
   const navigate = useNavigate();
-  const [showEdit, setShowEdit] = useState(false);
-  const [showDelete, setShowDelete] = useState(false);
-  const [formData, setFormData] = useState({ 
-    full_name: user?.full_name || '', 
-    email: user?.email || '' 
-  });
-  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (user) {
-      setFormData({
-        full_name: user.full_name || '',
-        email: user.email || ''
-      });
-    }
-  }, [user]);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [fullName, setFullName] = useState(user?.full_name || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  // Inline Change Password State
+  const [currentPw, setCurrentPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [showPw, setShowPw] = useState(false);
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwMessage, setPwMessage] = useState(null); // { type: 'error' | 'success', text: '' }
 
   const getInitials = (name) => {
-    if (!name) return 'US';
-    return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+    if (!name) return 'U';
+    const parts = name.trim().split(' ');
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return name[0].toUpperCase();
   };
 
-  const handleUpdate = async () => {
-    setLoading(true);
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    setSaving(true);
     try {
-      await updateProfile(formData);
-      setUser({ ...user, ...formData });
-      setShowEdit(false);
-      alert(lang === 'vi' ? 'Cập nhật thông tin cá nhân thành công!' : 'Profile updated successfully!');
+      await updateProfile(fullName, email);
+      await refreshUser();
+      setShowEditModal(false);
+      showToast('Cập nhật hồ sơ thành công!');
     } catch (err) {
-      alert(err.response?.data?.detail || (lang === 'vi' ? 'Lỗi khi cập nhật hồ sơ.' : 'Error updating profile.'));
+      showToast(err.response?.data?.detail || 'Lỗi cập nhật hồ sơ', 'error');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  const handleLogout = () => {
-    logoutUser();
-    navigate('/login');
-  };
-
-  // Format creation date accurately
-  const formatCreatedDate = (dateStr) => {
-    if (!dateStr) return '15/10/2026'; // Fallback to account creation date
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+    setPwMessage(null);
+    if (newPw.length < 6) {
+      setPwMessage({ type: 'error', text: 'Mật khẩu mới phải có ít nhất 6 ký tự.' });
+      return;
+    }
+    if (newPw !== confirmPw) {
+      setPwMessage({ type: 'error', text: 'Mật khẩu xác nhận không khớp.' });
+      return;
+    }
+    setPwLoading(true);
     try {
-      if (dateStr.includes('-')) {
-        const datePart = dateStr.split(' ')[0].split('T')[0];
-        const [year, month, day] = datePart.split('-');
-        if (year && month && day) {
-          return `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
-        }
-      }
-      return dateStr;
-    } catch {
-      return dateStr;
+      await changePassword(currentPw, newPw);
+      setPwMessage({
+        type: 'success',
+        text: 'Đổi mật khẩu thành công! Đang chuyển về trang đăng nhập...',
+      });
+      setCurrentPw('');
+      setNewPw('');
+      setConfirmPw('');
+      setTimeout(() => {
+        logout();
+        navigate('/login');
+      }, 1500);
+    } catch (err) {
+      setPwMessage({
+        type: 'error',
+        text: err.response?.data?.detail || 'Mật khẩu hiện tại không chính xác.',
+      });
+    } finally {
+      setPwLoading(false);
     }
+  };
+
+  const handleDeleteAccount = async () => {
+    try {
+      await deleteAccount();
+      setShowDeleteModal(false);
+      showToast('Yêu cầu xóa tài khoản đã được gửi tới quản trị viên.');
+    } catch (err) {
+      showToast(err.response?.data?.detail || 'Không thể gửi yêu cầu xóa tài khoản', 'error');
+    }
+  };
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return 'Chưa rõ';
+    const d = new Date(dateStr);
+    if (isNaN(d)) return dateStr;
+    return d.toLocaleDateString('vi-VN');
   };
 
   return (
-    <div className="profile-page-container">
-      <h2 style={{ fontSize: '24px', fontWeight: '700', marginBottom: '28px' }}>
-        {lang === 'vi' ? 'Hồ sơ cá nhân' : 'Personal Profile'}
-      </h2>
+    <div className="profile-page">
+      {toast && (
+        <div className={`toast ${toast.type}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+          {toast.type === 'success' ? (
+            <CheckCircle2 size={16} strokeWidth={1.75} />
+          ) : (
+            <AlertTriangle size={16} strokeWidth={1.75} />
+          )}
+          <span>{toast.msg}</span>
+        </div>
+      )}
 
-      <div className="profile-card">
-        <div className="profile-header">
-          <div className="profile-avatar-lg">
-            {getInitials(user?.full_name || user?.username)}
+      <div style={{ marginBottom: '24px' }}>
+        <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '4px' }}>Hồ sơ tài khoản</h2>
+        <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
+          Quản lý thông tin định danh cá nhân, bảo mật mật khẩu và quyền riêng tư tài khoản
+        </p>
+      </div>
+
+      {/* Balanced 2-Column Layout */}
+      <div className="profile-grid-2col">
+        {/* LEFT COLUMN: Personal Info Card (No redundant Logout button) */}
+        <div className="profile-card" style={{ maxWidth: 'none' }}>
+          <div className="profile-card-section-head">
+            <User size={18} strokeWidth={1.75} style={{ color: 'var(--primary)' }} />
+            <h4>Thông tin cá nhân</h4>
           </div>
-          <div className="profile-info">
-            <h3>{user?.full_name || user?.username || 'User'}</h3>
-            <p>{user?.email || 'user@email.com'}</p>
+
+          <div className="profile-header">
+            <div className="profile-avatar-lg">
+              {getInitials(user?.full_name || user?.username)}
+            </div>
+            <div className="profile-info">
+              <h3>{user?.full_name || user?.username}</h3>
+              <p>@{user?.username}</p>
+              <span className="profile-role-badge">
+                {user?.role === 'admin' ? 'Quản trị viên' : 'Tài khoản tiêu chuẩn'}
+              </span>
+            </div>
           </div>
-          <button 
-            className="btn btn-outline btn-sm" 
-            style={{ marginLeft: 'auto', borderRadius: '20px' }} 
-            onClick={() => setShowEdit(true)}
-            type="button"
-          >
-            ✏️ {lang === 'vi' ? 'Chỉnh sửa' : 'Edit'}
-          </button>
+
+          <div className="profile-detail">
+            <span className="detail-icon"><User size={17} strokeWidth={1.75} /></span>
+            <span className="detail-label">Họ và tên</span>
+            <span className="detail-value">{user?.full_name || 'Chưa cập nhật'}</span>
+          </div>
+
+          <div className="profile-detail">
+            <span className="detail-icon"><AtSign size={17} strokeWidth={1.75} /></span>
+            <span className="detail-label">Tên đăng nhập</span>
+            <span className="detail-value">{user?.username}</span>
+          </div>
+
+          <div className="profile-detail">
+            <span className="detail-icon"><Mail size={17} strokeWidth={1.75} /></span>
+            <span className="detail-label">Địa chỉ Email</span>
+            <span className="detail-value">{user?.email || 'Chưa cập nhật'}</span>
+          </div>
+
+          <div className="profile-detail">
+            <span className="detail-icon"><Calendar size={17} strokeWidth={1.75} /></span>
+            <span className="detail-label">Ngày tham gia</span>
+            <span className="detail-value">{formatDate(user?.created_at)}</span>
+          </div>
+
+          <div className="profile-actions" style={{ marginTop: '24px' }}>
+            <button
+              className="btn btn-primary"
+              style={{ width: '100%' }}
+              onClick={() => {
+                setFullName(user?.full_name || '');
+                setEmail(user?.email || '');
+                setShowEditModal(true);
+              }}
+            >
+              <Edit3 size={17} strokeWidth={1.75} />
+              Chỉnh sửa thông tin cá nhân
+            </button>
+          </div>
         </div>
 
-        <div className="profile-detail">
-          <span className="detail-icon">📅</span>
-          <span className="detail-label">{lang === 'vi' ? 'Ngày tạo tài khoản' : 'Account Created Date'}</span>
-          <span className="detail-value">{formatCreatedDate(user?.created_at)}</span>
-        </div>
+        {/* RIGHT COLUMN: Security & Password + Danger Zone */}
+        <div className="profile-right-stack">
+          {/* Security & Change Password Card */}
+          <div className="profile-card" style={{ maxWidth: 'none' }}>
+            <div className="profile-card-section-head">
+              <Lock size={18} strokeWidth={1.75} style={{ color: 'var(--primary)' }} />
+              <h4>Bảo mật &amp; Đổi mật khẩu</h4>
+            </div>
+            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '18px' }}>
+              Sử dụng mật khẩu mạnh tối thiểu 6 ký tự để bảo vệ dữ liệu hóa đơn của bạn.
+            </p>
 
-        <div className="profile-actions">
-          <button className="btn btn-primary" onClick={() => navigate('/settings')}>
-            🔒 {lang === 'vi' ? 'Đổi mật khẩu' : 'Change Password'}
-          </button>
-          <button className="btn btn-outline" onClick={handleLogout}>
-            🚪 {lang === 'vi' ? 'Đăng xuất' : 'Log Out'}
-          </button>
-          <button 
-            className="btn btn-outline" 
-            style={{ color: 'var(--danger)', borderColor: '#FEE2E2', background: '#FEF2F2' }} 
-            onClick={() => setShowDelete(true)}
-          >
-            👤- {lang === 'vi' ? 'Xóa tài khoản' : 'Delete Account'}
-          </button>
+            {pwMessage && (
+              <div
+                className={`stg-alert ${
+                  pwMessage.type === 'error' ? 'stg-alert-error' : 'stg-alert-success'
+                }`}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+              >
+                {pwMessage.type === 'error' ? (
+                  <AlertTriangle size={16} strokeWidth={1.75} />
+                ) : (
+                  <CheckCircle2 size={16} strokeWidth={1.75} />
+                )}
+                <span>{pwMessage.text}</span>
+              </div>
+            )}
+
+            <form onSubmit={handlePasswordChange} className="stg-pw-form">
+              <label>Mật khẩu hiện tại</label>
+              <div className="stg-pw-field">
+                <input
+                  type={showPw ? 'text' : 'password'}
+                  placeholder="Nhập mật khẩu hiện tại..."
+                  value={currentPw}
+                  onChange={(e) => setCurrentPw(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  className="stg-pw-eye"
+                  onClick={() => setShowPw(!showPw)}
+                  title={showPw ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                >
+                  {showPw ? <EyeOff size={16} strokeWidth={1.75} /> : <Eye size={16} strokeWidth={1.75} />}
+                </button>
+              </div>
+
+              <div className="profile-pw-grid">
+                <div>
+                  <label style={{ marginTop: '14px' }}>Mật khẩu mới</label>
+                  <input
+                    type={showPw ? 'text' : 'password'}
+                    placeholder="Tối thiểu 6 ký tự"
+                    value={newPw}
+                    onChange={(e) => setNewPw(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label style={{ marginTop: '14px' }}>Xác nhận mật khẩu mới</label>
+                  <input
+                    type={showPw ? 'text' : 'password'}
+                    placeholder="Nhập lại mật khẩu mới"
+                    value={confirmPw}
+                    onChange={(e) => setConfirmPw(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginTop: '18px', display: 'flex', justifyContent: 'flex-end' }}>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  style={{ width: 'auto', padding: '10px 22px' }}
+                  disabled={pwLoading}
+                >
+                  <KeyRound size={16} strokeWidth={1.75} />
+                  {pwLoading ? 'Đang cập nhật...' : 'Cập nhật mật khẩu'}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Danger Zone Card */}
+          <div className="profile-card profile-danger-card" style={{ maxWidth: 'none' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: '220px' }}>
+                <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--danger)', fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>
+                  <ShieldAlert size={18} strokeWidth={1.75} />
+                  Khu vực nguy hiểm
+                </h4>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  Xóa vĩnh viễn tài khoản và toàn bộ hóa đơn, lịch sử trò chuyện AI của bạn khỏi hệ thống.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-outline-danger btn-sm"
+                onClick={() => setShowDeleteModal(true)}
+                style={{ alignSelf: 'center' }}
+              >
+                <Trash2 size={15} strokeWidth={1.75} />
+                Xóa tài khoản
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      {showEdit && (
-        <div className="modal-overlay" onClick={() => setShowEdit(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+      {/* Edit Profile Modal */}
+      {showEditModal && (
+        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>{lang === 'vi' ? 'Chỉnh sửa thông tin cá nhân' : 'Edit Profile'}</h3>
-            </div>
-            
-            <div className="modal-section">
-              <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px', display: 'block' }}>
-                {lang === 'vi' ? 'Họ và tên' : 'Full Name'}
-              </label>
-              <input 
-                type="text" 
-                className="form-input" 
-                placeholder={lang === 'vi' ? 'Họ và tên' : 'Full Name'} 
-                value={formData.full_name}
-                onChange={e => setFormData({...formData, full_name: e.target.value})}
-                style={{ marginBottom: '16px' }}
-              />
-              <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px', display: 'block' }}>
-                Email
-              </label>
-              <input 
-                type="email" 
-                className="form-input" 
-                placeholder="Email" 
-                value={formData.email}
-                onChange={e => setFormData({...formData, email: e.target.value})}
-              />
-            </div>
-            
-            <div className="modal-actions" style={{ justifyContent: 'flex-end', marginTop: '16px' }}>
-              <button className="btn btn-ghost" onClick={() => setShowEdit(false)}>
-                {lang === 'vi' ? 'Hủy' : 'Cancel'}
-              </button>
-              <button className="btn btn-primary" onClick={handleUpdate} disabled={loading}>
-                {loading ? (lang === 'vi' ? 'Đang lưu...' : 'Saving...') : (lang === 'vi' ? 'Lưu thay đổi' : 'Save Changes')}
+              <h3>Chỉnh sửa hồ sơ</h3>
+              <button className="modal-close" onClick={() => setShowEditModal(false)}>
+                <X size={16} strokeWidth={1.75} />
               </button>
             </div>
+            <form onSubmit={handleSaveProfile}>
+              <div className="form-group">
+                <label>Họ và tên</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Nhập họ và tên"
+                />
+              </div>
+              <div className="form-group">
+                <label>Email</label>
+                <input
+                  type="email"
+                  className="form-input"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Nhập email"
+                />
+              </div>
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => setShowEditModal(false)}
+                >
+                  Hủy
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? 'Đang lưu...' : 'Lưu thay đổi'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
-      {showDelete && (
-        <div className="modal-overlay" onClick={() => setShowDelete(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+      {/* Delete Account Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>{lang === 'vi' ? 'Xóa tài khoản?' : 'Delete Account?'}</h3>
-            </div>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', fontSize: '14px' }}>
-              {lang === 'vi' 
-                ? 'Tài khoản và dữ liệu liên quan sẽ bị xóa. Thao tác này cần xác nhận của quản trị viên.' 
-                : 'Your account and related data will be removed. This action requires admin confirmation.'}
-            </p>
-            <div className="modal-actions" style={{ justifyContent: 'flex-end' }}>
-              <button className="btn btn-ghost" onClick={() => setShowDelete(false)}>
-                {lang === 'vi' ? 'Hủy' : 'Cancel'}
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--danger)' }}>
+                <AlertTriangle size={20} strokeWidth={1.75} />
+                Xác nhận xóa tài khoản
+              </h3>
+              <button className="modal-close" onClick={() => setShowDeleteModal(false)}>
+                <X size={16} strokeWidth={1.75} />
               </button>
-              <button className="btn btn-danger" onClick={() => alert(lang === 'vi' ? 'Yêu cầu xóa tài khoản đã được gửi tới quản trị viên.' : 'Account deletion request submitted.')}>
-                {lang === 'vi' ? 'Xác nhận xóa' : 'Confirm Delete'}
+            </div>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '20px', lineHeight: 1.6 }}>
+              Hành động này không thể hoàn tác. Tất cả dữ liệu hóa đơn và thông tin cá nhân của bạn sẽ bị xóa vĩnh viễn.
+            </p>
+            <div className="modal-actions">
+              <button className="btn btn-outline" onClick={() => setShowDeleteModal(false)}>
+                Hủy
+              </button>
+              <button className="btn btn-danger" onClick={handleDeleteAccount}>
+                <Trash2 size={16} strokeWidth={1.75} />
+                Xóa tài khoản vĩnh viễn
               </button>
             </div>
           </div>

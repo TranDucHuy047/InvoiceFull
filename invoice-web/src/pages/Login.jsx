@@ -2,11 +2,27 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { login, register, sendOtp } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  Receipt,
+  Sparkles,
+  Eye,
+  EyeOff,
+  AlertTriangle,
+  CheckCircle2,
+  Mail,
+  ArrowRight,
+  ArrowLeft,
+} from 'lucide-react';
 
 export default function Login() {
   const [isLogin, setIsLogin] = useState(true);
   const [regStep, setRegStep] = useState(1); // 1: Info form, 2: OTP verification
-  const [formData, setFormData] = useState({ username: '', password: '', email: '', full_name: '' });
+  const [formData, setFormData] = useState({
+    username: '',
+    password: '',
+    email: '',
+    full_name: '',
+  });
   const [otpCode, setOtpCode] = useState('');
   const [otpMessage, setOtpMessage] = useState('');
   const [countdown, setCountdown] = useState(0);
@@ -26,7 +42,7 @@ export default function Login() {
     }
     if (token && user) {
       if (user.role === 'admin') {
-        window.location.href = `http://localhost:5174/login?token=${token}`;
+        window.location.href = `http://${window.location.hostname || 'localhost'}:5174/login?token=${token}`;
       } else {
         navigate('/');
       }
@@ -63,7 +79,7 @@ export default function Login() {
       const res = await sendOtp(formData.email.trim(), formData.username.trim());
       setOtpMessage(res.data.message || `Mã OTP đã được gửi đến email ${formData.email}.`);
       if (res.data.otp_code) {
-        setOtpCode(res.data.otp_code); // Pre-fill if dev fallback is returned
+        setOtpCode(res.data.otp_code);
       }
       setRegStep(2);
       setCountdown(60);
@@ -146,12 +162,12 @@ export default function Login() {
       const role = res.data.role || userData?.role;
 
       loginUser(accessToken, userData);
-      
+
       if (role === 'admin') {
-        window.location.href = `http://localhost:5174/login?token=${accessToken}`;
+        window.location.href = `http://${window.location.hostname || 'localhost'}:5174/login?token=${accessToken}`;
         return;
       }
-      
+
       navigate('/');
     } catch (err) {
       let errMsg = err.response?.data?.detail;
@@ -169,27 +185,51 @@ export default function Login() {
       <div className="login-bg-orb orb-2"></div>
       <div className="login-bg-orb orb-3"></div>
       <div className="login-container">
-        <div className="login-brand-tag">✨ AI-Powered Invoice Platform</div>
+        <div style={{ textAlign: 'center' }}>
+          <div className="login-brand-tag" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <Sparkles size={13} strokeWidth={1.75} />
+            <span>AI-Powered Invoice Platform</span>
+          </div>
+        </div>
         <div className="login-logo">
-          <div className="login-logo-icon">🧾</div>
+          <div className="login-logo-icon">
+            <Receipt size={24} strokeWidth={1.75} />
+          </div>
           <h1>Invoice AI</h1>
         </div>
-        
+
         <p className="login-subtitle">
-          {isLogin 
-            ? 'Đăng nhập để quản lý hóa đơn của bạn' 
-            : (regStep === 1 ? 'Tạo tài khoản mới (Bước 1/2: Thông tin)' : 'Xác thực OTP (Bước 2/2: Nhập mã)')}
+          {isLogin
+            ? 'Đăng nhập để quản lý hóa đơn của bạn'
+            : regStep === 1
+            ? 'Tạo tài khoản mới (Bước 1/2: Thông tin)'
+            : 'Xác thực OTP (Bước 2/2: Nhập mã)'}
         </p>
 
-        {error && <div className="error-msg">⚠️ {error}</div>}
+        {error && (
+          <div className="error-msg">
+            <AlertTriangle size={16} strokeWidth={1.75} />
+            <span>{error}</span>
+          </div>
+        )}
         {success && (
-          <div style={{
-            padding: '12px 16px', borderRadius: '8px',
-            backgroundColor: '#D1FAE5', color: '#065F46',
-            fontSize: '13px', fontWeight: '600',
-            marginBottom: '16px', textAlign: 'center'
-          }}>
-            ✅ {success}
+          <div
+            style={{
+              padding: '12px 16px',
+              borderRadius: '8px',
+              backgroundColor: '#D1FAE5',
+              color: '#065F46',
+              fontSize: '13px',
+              fontWeight: '600',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+            }}
+          >
+            <CheckCircle2 size={16} strokeWidth={1.75} />
+            <span>{success}</span>
           </div>
         )}
 
@@ -198,41 +238,49 @@ export default function Login() {
           <form onSubmit={handleLoginSubmit}>
             <div className="form-group">
               <label>Tên đăng nhập</label>
-              <input 
-                type="text" 
-                name="username" 
-                value={formData.username} 
-                onChange={handleChange} 
-                className="form-input" 
-                placeholder="Nhập tên đăng nhập" 
-                required 
+              <input
+                type="text"
+                name="username"
+                value={formData.username}
+                onChange={handleChange}
+                className="form-input"
+                placeholder="Nhập tên đăng nhập"
+                required
               />
             </div>
 
             <div className="form-group">
               <label>Mật khẩu</label>
               <div className="password-input-wrapper">
-                <input 
-                  type={showPassword ? 'text' : 'password'} 
-                  name="password" 
-                  value={formData.password} 
-                  onChange={handleChange} 
-                  className="form-input" 
-                  placeholder="Nhập mật khẩu" 
-                  required 
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  className="form-input"
+                  placeholder="Nhập mật khẩu"
+                  required
                 />
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   className="password-toggle"
                   onClick={() => setShowPassword(!showPassword)}
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                 >
-                  {showPassword ? '👁️‍🗨️' : '👁️'}
+                  {showPassword ? <EyeOff size={18} strokeWidth={1.75} /> : <Eye size={18} strokeWidth={1.75} />}
                 </button>
               </div>
             </div>
 
             <button type="submit" className="btn btn-primary" style={{ marginTop: '12px' }} disabled={loading}>
-              {loading ? 'Đang xử lý...' : 'Đăng nhập'}
+              {loading ? (
+                'Đang xử lý...'
+              ) : (
+                <>
+                  <span>Đăng nhập</span>
+                  <ArrowRight size={17} strokeWidth={1.75} />
+                </>
+              )}
             </button>
           </form>
         )}
@@ -242,67 +290,75 @@ export default function Login() {
           <form onSubmit={handleSendOtp}>
             <div className="form-group">
               <label>Họ và tên</label>
-              <input 
-                type="text" 
-                name="full_name" 
-                value={formData.full_name} 
-                onChange={handleChange} 
-                className="form-input" 
-                placeholder="Nhập họ và tên đầy đủ" 
-                required 
+              <input
+                type="text"
+                name="full_name"
+                value={formData.full_name}
+                onChange={handleChange}
+                className="form-input"
+                placeholder="Nhập họ và tên đầy đủ"
+                required
               />
             </div>
 
             <div className="form-group">
               <label>Email (để nhận mã OTP)</label>
-              <input 
-                type="email" 
-                name="email" 
-                value={formData.email} 
-                onChange={handleChange} 
-                className="form-input" 
-                placeholder="example@email.com" 
-                required 
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                className="form-input"
+                placeholder="example@email.com"
+                required
               />
             </div>
 
             <div className="form-group">
               <label>Tên đăng nhập</label>
-              <input 
-                type="text" 
-                name="username" 
-                value={formData.username} 
-                onChange={handleChange} 
-                className="form-input" 
-                placeholder="Chọn tên đăng nhập (VD: huy123)" 
-                required 
+              <input
+                type="text"
+                name="username"
+                value={formData.username}
+                onChange={handleChange}
+                className="form-input"
+                placeholder="Chọn tên đăng nhập (VD: huy123)"
+                required
               />
             </div>
 
             <div className="form-group">
               <label>Mật khẩu</label>
               <div className="password-input-wrapper">
-                <input 
-                  type={showPassword ? 'text' : 'password'} 
-                  name="password" 
-                  value={formData.password} 
-                  onChange={handleChange} 
-                  className="form-input" 
-                  placeholder="Nhập mật khẩu an toàn" 
-                  required 
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  className="form-input"
+                  placeholder="Nhập mật khẩu an toàn"
+                  required
                 />
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   className="password-toggle"
                   onClick={() => setShowPassword(!showPassword)}
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                 >
-                  {showPassword ? '👁️‍🗨️' : '👁️'}
+                  {showPassword ? <EyeOff size={18} strokeWidth={1.75} /> : <Eye size={18} strokeWidth={1.75} />}
                 </button>
               </div>
             </div>
 
             <button type="submit" className="btn btn-primary" style={{ marginTop: '12px' }} disabled={loading}>
-              {loading ? 'Đang gửi mã OTP...' : 'Gửi mã OTP & Tiếp tục →'}
+              {loading ? (
+                'Đang gửi mã OTP...'
+              ) : (
+                <>
+                  <span>Gửi mã OTP &amp; Tiếp tục</span>
+                  <ArrowRight size={17} strokeWidth={1.75} />
+                </>
+              )}
             </button>
           </form>
         )}
@@ -311,13 +367,24 @@ export default function Login() {
         {!isLogin && regStep === 2 && (
           <form onSubmit={handleVerifyOtpAndRegister}>
             {otpMessage && (
-              <div style={{
-                padding: '12px 14px', borderRadius: '8px',
-                backgroundColor: '#EEF2FF', color: 'var(--primary)',
-                fontSize: '13px', fontWeight: '500',
-                marginBottom: '18px', textAlign: 'center', lineHeight: '1.5'
-              }}>
-                📩 {otpMessage}
+              <div
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: '8px',
+                  backgroundColor: '#EEF2FF',
+                  color: 'var(--primary)',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  marginBottom: '18px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '8px',
+                  lineHeight: '1.5',
+                }}
+              >
+                <Mail size={16} strokeWidth={1.75} style={{ flexShrink: 0 }} />
+                <span>{otpMessage}</span>
               </div>
             )}
 
@@ -325,16 +392,16 @@ export default function Login() {
               <label style={{ textAlign: 'center', display: 'block', marginBottom: '8px' }}>
                 Mã xác thực OTP (6 chữ số)
               </label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 maxLength={6}
-                value={otpCode} 
-                onChange={e => {
+                value={otpCode}
+                onChange={(e) => {
                   setOtpCode(e.target.value.replace(/\D/g, ''));
                   setError('');
-                }} 
-                className="form-input" 
-                placeholder="1 2 3 4 5 6" 
+                }}
+                className="form-input"
+                placeholder="1 2 3 4 5 6"
                 style={{
                   textAlign: 'center',
                   fontSize: '26px',
@@ -342,9 +409,9 @@ export default function Login() {
                   letterSpacing: '8px',
                   color: 'var(--primary)',
                   backgroundColor: '#F8FAFC',
-                  padding: '14px'
+                  padding: '14px',
                 }}
-                required 
+                required
                 autoFocus
               />
             </div>
@@ -353,22 +420,50 @@ export default function Login() {
               {loading ? 'Đang xác thực...' : 'Xác nhận & Hoàn tất đăng ký'}
             </button>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', fontSize: '13px' }}>
-              <button 
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginTop: '16px',
+                fontSize: '13px',
+              }}
+            >
+              <button
                 type="button"
-                onClick={() => { setRegStep(1); setError(''); }}
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0 }}
+                onClick={() => {
+                  setRegStep(1);
+                  setError('');
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  padding: 0,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
               >
-                ← Sửa lại thông tin
+                <ArrowLeft size={14} strokeWidth={1.75} />
+                <span>Sửa lại thông tin</span>
               </button>
 
               {countdown > 0 ? (
                 <span style={{ color: 'var(--text-muted)' }}>Gửi lại sau ({countdown}s)</span>
               ) : (
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={handleResendOtp}
-                  style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontWeight: '600', padding: 0 }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--primary)',
+                    cursor: 'pointer',
+                    fontWeight: '600',
+                    padding: 0,
+                  }}
                 >
                   Gửi lại mã OTP
                 </button>
@@ -379,9 +474,37 @@ export default function Login() {
 
         <div className="login-footer">
           {isLogin ? (
-            <p>Chưa có tài khoản? <a href="#" onClick={(e) => { e.preventDefault(); setIsLogin(false); setRegStep(1); setSuccess(''); setError(''); }}>Đăng ký ngay</a></p>
+            <p>
+              Chưa có tài khoản?{' '}
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setIsLogin(false);
+                  setRegStep(1);
+                  setSuccess('');
+                  setError('');
+                }}
+              >
+                Đăng ký ngay
+              </a>
+            </p>
           ) : (
-            <p>Đã có tài khoản? <a href="#" onClick={(e) => { e.preventDefault(); setIsLogin(true); setRegStep(1); setSuccess(''); setError(''); }}>Đăng nhập</a></p>
+            <p>
+              Đã có tài khoản?{' '}
+              <a
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setIsLogin(true);
+                  setRegStep(1);
+                  setSuccess('');
+                  setError('');
+                }}
+              >
+                Đăng nhập
+              </a>
+            </p>
           )}
         </div>
       </div>

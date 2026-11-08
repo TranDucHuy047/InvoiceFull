@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+const host = window.location.hostname || 'localhost';
+
 const axiosClient = axios.create({
-    baseURL: 'http://localhost:8000/api',
+    baseURL: `http://${host}:8000/api`,
     headers: {
     },
 });
@@ -20,7 +22,7 @@ axiosClient.interceptors.response.use(
     if (error.response && (error.response.status === 401 || error.response.status === 403)) {
       console.error("Authentication Error: ", error.response?.data);
       localStorage.removeItem('admin_token');
-      window.location.href = 'http://localhost:5173/login?logout=true';
+      window.location.href = `http://${host}:5173/login?logout=true`;
     }
     return Promise.reject(error);
   }

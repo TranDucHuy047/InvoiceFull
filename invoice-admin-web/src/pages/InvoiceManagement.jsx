@@ -23,17 +23,30 @@ export default function InvoiceManagement() {
   }, []);
 
   const handleExport = () => {
-    // Call the export API
-    axiosClient.get('/invoices/export', { responseType: 'blob' })
-      .then((response) => {
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', 'invoices_export.csv');
-        document.body.appendChild(link);
-        link.click();
-      })
-      .catch(err => alert("Không có dữ liệu hóa đơn để xuất."));
+    if (!filtered || filtered.length === 0) {
+      return;
+    }
+
+    const headers = ['Mã HĐ', 'Cửa hàng', 'Người dùng', 'Ngày', 'Tổng tiền', 'Trạng thái'];
+    const rows = filtered.map((inv) => [
+      `"${String(inv.invoice_id || 'N/A').replace(/"/g, '""')}"`,
+      `"${String(inv.store_name || 'Không xác định').replace(/"/g, '""')}"`,
+      `"${String(inv.user_name || 'Không xác định').replace(/"/g, '""')}"`,
+      `"${String(inv.date || '-').replace(/"/g, '""')}"`,
+      `"${Number(inv.total_amount || 0).toLocaleString('vi-VN')} đ"`,
+      inv.total_amount && Number(inv.total_amount) !== 0 ? 'Thành công' : 'Cần kiểm tra',
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `danh_sach_hoa_don_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
   };
 
   const filtered = invoices.filter(i => 
@@ -82,7 +95,7 @@ export default function InvoiceManagement() {
                   <td style={{ fontWeight: '500' }}>{inv.store_name || 'Không xác định'}</td>
                   <td>{inv.user_name || 'Không xác định'}</td>
                   <td style={{ color: 'var(--text-muted)' }}>{inv.date || '-'}</td>
-                  <td style={{ fontWeight: '600' }}>{inv.total_amount || '0'}đ</td>
+                  <td style={{ fontWeight: '600' }}>{Number(inv.total_amount || 0).toLocaleString('vi-VN')} đ</td>
                   <td>
                     {inv.total_amount && inv.total_amount != '0' ? 
                       <span className="badge badge-success">Thành công</span> : 

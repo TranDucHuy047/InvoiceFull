@@ -9,16 +9,19 @@ class InvoiceItem(BaseModel):
 
 class InvoiceData(BaseModel):
     invoice_id: str
-    ocr_confidence: float
+    ocr_confidence: Optional[float] = 0.95
     store_name: str
     store_address: Optional[str] = None
     date: str
+    invoice_type: Optional[str] = "Other"
+    subtotal: Optional[float] = 0.0
     total_amount: float
-    tax_amount: float
+    tax_amount: Optional[float] = 0.0
     items: List[InvoiceItem]
     raw_text: str
     image_path: Optional[str] = None
     is_submitted: Optional[bool] = False
+    delete_reason: Optional[str] = ""
 
 class QA_Request(BaseModel):
     invoice_id: Optional[str] = None
@@ -41,11 +44,6 @@ class BatchInvoiceResponse(BaseModel):
     data: List[InvoiceData]
     errors: List[str]
 
-class UserRegister(BaseModel):
-    username: str
-    email: str
-    password: str
-
 # --- OTP Schemas ---
 class OtpRequest(BaseModel):
     """Nhận email hoặc số điện thoại để gửi mã OTP"""
@@ -66,6 +64,7 @@ class ChangePassword(BaseModel):
 
 class UserProfileUpdate(BaseModel):
     email: str
+    full_name: Optional[str] = None
 
 class ToggleLockRequest(BaseModel):
     user_id: int

@@ -1,49 +1,78 @@
 import { useState, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { analyzeInvoice, updateInvoice, deleteInvoice } from '../services/api';
-import { useLanguage } from '../contexts/LanguageContext';
+import { useNavigate } from 'react-router-dom';
+import { uploadInvoice, updateInvoice, deleteInvoice } from '../services/api';
+import {
+  UploadCloud,
+  Image as ImageIcon,
+  FileText,
+  Sparkles,
+  AlertTriangle,
+  CheckCircle2,
+  ZoomIn,
+  ZoomOut,
+  Plus,
+  Trash2,
+  RotateCcw,
+  Eye,
+  Cpu,
+  Check,
+  Store,
+  Receipt,
+  ListChecks,
+  ShieldCheck,
+} from 'lucide-react';
 
 export default function Scan() {
-  const [file, setFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [scanStep, setScanStep] = useState(1); // 1: upload, 2: ocr, 3: ai extract
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [duplicateAlert, setDuplicateAlert] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
-  
-  // Duplicate error state
-  const [duplicateError, setDuplicateError] = useState(null);
+  const [toast, setToast] = useState(null);
+  const [zoomImage, setZoomImage] = useState(false);
 
-  // Review Step state
-  const [isReviewing, setIsReviewing] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isZoomed, setIsZoomed] = useState(false);
-  const [editData, setEditData] = useState({
-    invoice_id: '',
+  // Step 2: Extracted invoice state for user verification & editing
+  const [extractedInvoice, setExtractedInvoice] = useState(null);
+  const [formData, setFormData] = useState({
     store_name: '',
     store_address: '',
     date: '',
+    invoice_type: 'Other',
+    subtotal: 0,
     tax_amount: 0,
     total_amount: 0,
     items: [],
-    raw_text: '',
-    image_path: ''
   });
 
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
-  const { lang, t } = useLanguage();
 
-  const handleFile = (selectedFile) => {
-    if (!selectedFile) return;
-    setDuplicateError(null);
-    setFile(selectedFile);
-    setPreviewUrl(URL.createObjectURL(selectedFile));
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
   };
 
-  const handleFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      handleFile(e.target.files[0]);
+  const handleFileSelect = (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Vui lòng chọn file hình ảnh (JPG, PNG, WEBP, ...)');
+      return;
     }
+    setSelectedFile(file);
+    setError('');
+    setDuplicateAlert(null);
+    const reader = new FileReader();
+    reader.onload = (e) => setPreview(e.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    handleFileSelect(file);
   };
 
   const handleDragOver = (e) => {
@@ -51,626 +80,797 @@ export default function Scan() {
     setIsDragging(true);
   };
 
-  const handleDragLeave = (e) => {
-    e.preventDefault();
+  const handleDragLeave = () => {
     setIsDragging(false);
   };
 
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFile(e.dataTransfer.files[0]);
+  // Step 1 -> Step 2: Upload & Run OCR
+  const handleScan = async (forceOverwrite = false) => {
+    if (!selectedFile) {
+      setError('Vui lòng chọn ảnh hóa đơn trước khi đọc');
+      return;
     }
-  };
 
-  const handleScan = async () => {
-    if (!file) return;
-    setDuplicateError(null);
     setLoading(true);
-    setScanStep(1);
-
-    const stepTimer1 = setTimeout(() => setScanStep(2), 1200);
-    const stepTimer2 = setTimeout(() => setScanStep(3), 2600);
+    setError('');
+    if (!forceOverwrite) {
+      setDuplicateAlert(null);
+    }
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      const res = await analyzeInvoice(formData);
-      
-      if (res.data && res.data.data && res.data.data.invoice_id) {
-        const inv = res.data.data;
-        setEditData({
-          invoice_id: inv.invoice_id,
-          store_name: inv.store_name || '',
-          store_address: inv.store_address || '',
-          date: inv.date || '',
-          tax_amount: inv.tax_amount || 0,
-          total_amount: inv.total_amount || 0,
-          items: Array.isArray(inv.items) && inv.items.length > 0
-            ? inv.items.map(it => ({
-                item_name: it.item_name || '',
-                quantity: it.quantity || 1,
-                unit_price: it.unit_price || 0,
-                total_price: it.total_price || (it.quantity || 1) * (it.unit_price || 0)
-              }))
+      const res = await uploadInvoice(selectedFile, forceOverwrite);
+      const data = res.data?.data || res.data;
+
+      if (data?.invoice_id) {
+        setDuplicateAlert(null);
+        setExtractedInvoice(data);
+        setFormData({
+          store_name: data.store_name || '',
+          store_address: data.store_address || '',
+          date: data.date || '',
+          invoice_type: data.invoice_type || 'Other',
+          subtotal: Number(data.subtotal) || 0,
+          tax_amount: Number(data.tax_amount) || 0,
+          total_amount: Number(data.total_amount) || 0,
+          items: Array.isArray(data.items)
+            ? data.items.map((it) => {
+                const itemName = it.item_name || it.name || '';
+                return {
+                  name: itemName,
+                  item_name: itemName,
+                  quantity: Number(it.quantity) || 1,
+                  unit_price: Number(it.unit_price) || 0,
+                  total_price: Number(it.total_price) || 0,
+                };
+              })
             : [],
-          raw_text: inv.raw_text || '',
-          image_path: inv.image_path || ''
         });
-        setIsReviewing(true);
+        showToast(
+          forceOverwrite
+            ? 'Đã quét đè hóa đơn thành công! Vui lòng kiểm tra thông tin.'
+            : 'Đã đọc hóa đơn! Vui lòng kiểm tra và chỉnh sửa thông tin trước khi lưu.'
+        );
       } else {
-        alert(lang === 'vi' ? 'Không thể trích xuất hóa đơn. Vui lòng thử lại.' : 'Failed to extract invoice. Please try again.');
+        setError('Đã xử lý nhưng không nhận được mã hóa đơn');
       }
     } catch (err) {
-      console.error(err);
-      const errDetail = err.response?.data?.detail || err.message || '';
-      if (errDetail.includes('đã tồn tại')) {
-        const match = errDetail.match(/mã(?: hóa đơn)?:?\s*([A-Za-z0-9_]+)/i);
-        const dupId = match ? match[1] : null;
-        setDuplicateError({
-          title: lang === 'vi' ? 'Hóa đơn này đã tồn tại rồi!' : 'This invoice already exists!',
-          detail: errDetail,
-          invoiceId: dupId
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail;
+
+      if (status === 409 && detail && typeof detail === 'object') {
+        setDuplicateAlert({
+          message: detail.message || 'Hóa đơn này đã tồn tại trong hệ thống.',
+          existing_invoice_id: detail.existing_invoice_id,
+          store_name: detail.store_name,
+          date: detail.date,
+          total_amount: detail.total_amount,
+        });
+      } else if (typeof detail === 'string' && detail.includes('đã tồn tại')) {
+        const match = detail.match(/mã(?: hóa đơn)?:?\s*([A-Za-z0-9_]+)/i);
+        setDuplicateAlert({
+          message: detail,
+          existing_invoice_id: match ? match[1] : null,
         });
       } else {
-        alert(lang === 'vi' ? 'Đã xảy ra lỗi khi quét hóa đơn: ' + errDetail : 'An error occurred while scanning the invoice: ' + errDetail);
+        setError(
+          typeof detail === 'string'
+            ? detail
+            : 'Lỗi khi xử lý hóa đơn. Vui lòng thử lại.'
+        );
       }
     } finally {
-      clearTimeout(stepTimer1);
-      clearTimeout(stepTimer2);
       setLoading(false);
     }
   };
 
-  // Review Edit Handlers
-  const handleFieldChange = (field, val) => {
-    setEditData(prev => ({ ...prev, [field]: val }));
+  // Handlers for editing form fields
+  const handleFieldChange = (field, value) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
   };
 
-  const handleItemChange = (index, field, val) => {
-    setEditData(prev => {
-      const newItems = [...prev.items];
-      const item = { ...newItems[index] };
-      item[field] = val;
-      
+  const handleItemChange = (index, field, value) => {
+    setFormData((prev) => {
+      const updatedItems = [...prev.items];
+      const current = { ...updatedItems[index], [field]: value };
+
       if (field === 'quantity' || field === 'unit_price') {
-        const q = field === 'quantity' ? Number(val) || 0 : Number(item.quantity) || 0;
-        const u = field === 'unit_price' ? Number(val) || 0 : Number(item.unit_price) || 0;
-        item.total_price = q * u;
+        const q = Number(field === 'quantity' ? value : current.quantity) || 0;
+        const p = Number(field === 'unit_price' ? value : current.unit_price) || 0;
+        if (q > 0 && p > 0) {
+          current.total_price = Math.round(q * p);
+        }
       }
-      
-      newItems[index] = item;
-      return { ...prev, items: newItems };
+
+      updatedItems[index] = current;
+      return { ...prev, items: updatedItems };
     });
   };
 
   const handleAddItem = () => {
-    setEditData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       items: [
         ...prev.items,
-        { item_name: '', quantity: 1, unit_price: 0, total_price: 0 }
-      ]
+        { name: '', quantity: 1, unit_price: 0, total_price: 0 },
+      ],
     }));
   };
 
   const handleRemoveItem = (index) => {
-    setEditData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      items: prev.items.filter((_, idx) => idx !== index)
+      items: prev.items.filter((_, idx) => idx !== index),
     }));
   };
 
   const handleRecalculateTotal = () => {
-    const sumItems = editData.items.reduce((acc, it) => acc + (Number(it.total_price) || 0), 0);
-    const tax = Number(editData.tax_amount) || 0;
-    setEditData(prev => ({
+    const itemsSum = formData.items.reduce(
+      (acc, it) => acc + (Number(it.total_price) || 0),
+      0
+    );
+    const tax = Number(formData.tax_amount) || 0;
+    setFormData((prev) => ({
       ...prev,
-      total_amount: sumItems + tax
+      subtotal: itemsSum,
+      total_amount: itemsSum + tax,
     }));
+    showToast('Đã tự động tính lại tổng tiền từ danh sách mặt hàng!');
   };
 
-  const handleCancelReview = async () => {
-    const confirmMsg = lang === 'vi' 
-      ? 'Bạn có chắc chắn muốn hủy phiên quét này? Thông tin chưa lưu sẽ bị xóa.' 
-      : 'Are you sure you want to cancel? Unsaved info will be discarded.';
-      
-    if (window.confirm(confirmMsg)) {
-      if (editData.invoice_id) {
-        try {
-          await deleteInvoice(editData.invoice_id);
-        } catch (e) {
-          console.error(e);
-        }
-      }
-      setIsReviewing(false);
-      setFile(null);
-      setPreviewUrl(null);
-    }
-  };
+  // Step 2 -> Final: Submit confirmed & edited invoice
+  const handleConfirmSubmit = async (e) => {
+    e.preventDefault();
+    if (!extractedInvoice?.invoice_id) return;
 
-  const handleSubmitReview = async () => {
-    if (!editData.store_name.trim()) {
-      alert(lang === 'vi' ? 'Vui lòng nhập tên cửa hàng.' : 'Please enter store name.');
-      return;
-    }
+    setSubmitting(true);
+    setError('');
 
-    setIsSubmitting(true);
     try {
       const payload = {
-        invoice_id: editData.invoice_id,
-        ocr_confidence: 0.98,
-        store_name: editData.store_name.trim(),
-        store_address: editData.store_address.trim(),
-        date: editData.date.trim(),
-        total_amount: Number(editData.total_amount) || 0,
-        tax_amount: Number(editData.tax_amount) || 0,
-        items: editData.items.map(it => ({
-          item_name: it.item_name.trim() || 'Sản phẩm',
-          quantity: Number(it.quantity) || 1,
-          unit_price: Number(it.unit_price) || 0,
-          total_price: Number(it.total_price) || 0
-        })),
-        raw_text: editData.raw_text,
-        image_path: editData.image_path,
-        is_submitted: true
+        invoice_id: extractedInvoice.invoice_id,
+        store_name: formData.store_name.trim() || 'Cửa hàng chưa xác định',
+        store_address: formData.store_address.trim(),
+        date: formData.date.trim(),
+        invoice_type: formData.invoice_type,
+        subtotal: Number(formData.subtotal) || 0,
+        tax_amount: Number(formData.tax_amount) || 0,
+        total_amount: Number(formData.total_amount) || 0,
+        items: formData.items
+          .filter((it) => (it.name || it.item_name || '').trim() !== '')
+          .map((it) => {
+            const cleanName = (it.name || it.item_name || '').trim();
+            return {
+              name: cleanName,
+              item_name: cleanName,
+              quantity: Number(it.quantity) || 1,
+              unit_price: Number(it.unit_price) || 0,
+              total_price: Number(it.total_price) || 0,
+            };
+          }),
+        raw_text: extractedInvoice.raw_text || '',
+        image_path: extractedInvoice.image_path || '',
+        is_submitted: true,
       };
 
-      await updateInvoice(editData.invoice_id, payload);
-      navigate(`/history/${editData.invoice_id}`);
+      await updateInvoice(extractedInvoice.invoice_id, payload);
+      showToast('Đã xác nhận và lưu hóa đơn thành công!');
+
+      setTimeout(() => {
+        navigate(`/history/${extractedInvoice.invoice_id}`);
+      }, 600);
     } catch (err) {
-      console.error(err);
-      const errDetail = err.response?.data?.detail || err.message || '';
-      if (errDetail.includes('đã tồn tại')) {
-        const match = errDetail.match(/mã(?: hóa đơn)?:?\s*([A-Za-z0-9_]+)/i);
-        const dupId = match ? match[1] : null;
-        setDuplicateError({
-          title: lang === 'vi' ? 'Hóa đơn này đã tồn tại rồi!' : 'This invoice already exists!',
-          detail: errDetail,
-          invoiceId: dupId
-        });
-      } else {
-        alert(lang === 'vi' ? 'Lỗi khi lưu hóa đơn: ' + errDetail : 'Error saving invoice: ' + errDetail);
-      }
-    } finally {
-      setIsSubmitting(false);
+      setError(
+        err.response?.data?.detail ||
+          'Không thể lưu thông tin chỉnh sửa. Vui lòng thử lại.'
+      );
+      setSubmitting(false);
     }
+  };
+
+  const handleResetScan = async () => {
+    if (extractedInvoice?.invoice_id) {
+      try {
+        await deleteInvoice(extractedInvoice.invoice_id);
+      } catch (e) {
+        // Ignore cleanup error
+      }
+    }
+    setExtractedInvoice(null);
+    setSelectedFile(null);
+    setPreview(null);
+    setError('');
+    setDuplicateAlert(null);
+  };
+
+  const formatVND = (num) => {
+    return (Number(num) || 0).toLocaleString('vi-VN') + ' đ';
   };
 
   return (
-    <div className="scan-page">
-      <div className="breadcrumb">
-        <Link to="/">{lang === 'vi' ? 'Tổng quan' : 'Dashboard'}</Link> 
-        <span>›</span> 
-        <Link to="/scan" onClick={(e) => { if (isReviewing) { e.preventDefault(); handleCancelReview(); } }}>
-          {lang === 'vi' ? 'Quét hóa đơn' : 'Scan Invoice'}
-        </Link>
-        {isReviewing && (
-          <>
-            <span>›</span>
-            <span className="current">{lang === 'vi' ? 'Kiểm tra & Xác nhận' : 'Review & Submit'}</span>
-          </>
-        )}
+    <div className="scan-page scan-page-wide">
+      {toast && (
+        <div className={`toast ${toast.type}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+          <CheckCircle2 size={16} strokeWidth={1.75} />
+          <span>{toast.msg}</span>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="scan-header-bar">
+        <div>
+          <h2 style={{ fontSize: '22px', fontWeight: 800, margin: 0 }}>
+            {extractedInvoice
+              ? 'Kiểm tra & Xác nhận hóa đơn'
+              : 'Quét & Bóc tách hóa đơn AI'}
+          </h2>
+          <p style={{ fontSize: '13.5px', color: 'var(--text-muted)', marginTop: '4px' }}>
+            {extractedInvoice
+              ? 'Đối chiếu ảnh gốc bên trái và chỉnh sửa các trường thông tin bên phải trước khi lưu cố định'
+              : 'Tải lên hình ảnh chứng từ để hệ thống OCR và AI tự động nhận diện dữ liệu cấu trúc'}
+          </p>
+        </div>
+
+        <div className="scan-step-pills">
+          <span className={`scan-step-pill ${!extractedInvoice ? 'active' : 'done'}`}>
+            <span className="pill-num">1</span> Tải ảnh chứng từ
+          </span>
+          <span className="scan-step-sep" />
+          <span className={`scan-step-pill ${extractedInvoice ? 'active' : ''}`}>
+            <span className="pill-num">2</span> Kiểm duyệt & Lưu
+          </span>
+        </div>
       </div>
 
-      {/* Thông báo hóa đơn đã tồn tại / trùng lặp */}
-      {duplicateError && (
-        <div className="scan-duplicate-alert animate-fade-in">
-          <div className="scan-dup-icon-wrap">
-            <span className="scan-dup-icon">⚠️</span>
+      {error && (
+        <div className="error-msg" style={{ marginBottom: '20px' }}>
+          <AlertTriangle size={17} strokeWidth={1.75} />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Duplicate Invoice Alert Banner */}
+      {duplicateAlert && !loading && !extractedInvoice && (
+        <div className="scan-duplicate-alert">
+          <div className="scan-dup-icon-wrap" style={{ color: '#d97706' }}>
+            <AlertTriangle size={22} strokeWidth={1.75} />
           </div>
           <div className="scan-dup-content">
             <div className="scan-dup-header">
-              <h3 className="scan-dup-title">{duplicateError.title}</h3>
-              <span className="scan-dup-badge">{lang === 'vi' ? 'Trùng lặp' : 'Duplicate'}</span>
+              <h4 className="scan-dup-title">Phát hiện hóa đơn trùng lặp</h4>
+              <span className="scan-dup-badge">Đã tồn tại</span>
             </div>
-            <p className="scan-dup-detail">{duplicateError.detail}</p>
+            <p className="scan-dup-detail">{duplicateAlert.message}</p>
             <p className="scan-dup-hint">
-              {lang === 'vi' 
-                ? 'Hệ thống phát hiện hóa đơn này đã có trong tài khoản của bạn để tránh ghi nhận trùng lặp chi tiêu.' 
-                : 'This invoice already exists in your account to prevent duplicate expense records.'}
+              Bạn có thể mở xem hóa đơn đã lưu trước đó, hoặc chọn <strong>Quét đè</strong> nếu muốn cập nhật lại dữ liệu mới.
             </p>
             <div className="scan-dup-actions">
-              {duplicateError.invoiceId && (
-                <Link to={`/history/${duplicateError.invoiceId}`} className="btn btn-primary btn-sm">
-                  🔍 {lang === 'vi' ? 'Xem hóa đơn này trong Lịch sử' : 'View in History'}
-                </Link>
+              {duplicateAlert.existing_invoice_id && (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  style={{ width: 'auto' }}
+                  onClick={() => navigate(`/history/${duplicateAlert.existing_invoice_id}`)}
+                >
+                  <Eye size={15} strokeWidth={1.75} />
+                  Xem hóa đơn đã tồn tại
+                </button>
               )}
-              <button 
-                type="button" 
+              <button
+                type="button"
                 className="btn btn-outline btn-sm"
-                onClick={() => {
-                  setDuplicateError(null);
-                  setFile(null);
-                  setPreviewUrl(null);
-                  setIsReviewing(false);
-                }}
+                onClick={() => handleScan(true)}
               >
-                🔄 {lang === 'vi' ? 'Quét hóa đơn khác' : 'Scan Another Invoice'}
+                <RotateCcw size={15} strokeWidth={1.75} />
+                Vẫn tiếp tục quét đè
               </button>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 className="btn btn-ghost btn-sm"
-                onClick={() => setDuplicateError(null)}
+                onClick={handleResetScan}
               >
-                ✕ {lang === 'vi' ? 'Đóng thông báo' : 'Dismiss'}
+                Chọn ảnh khác
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* ==================== LOADING STATE ==================== */}
       {loading ? (
         <div className="scan-tech-overlay">
           <div className="scan-tech-card">
-            {/* Holographic scanner preview */}
             <div className="scan-tech-visual">
-              {previewUrl && <img src={previewUrl} alt="Scanning" className="scan-tech-img" />}
+              {preview && (
+                <img
+                  src={preview}
+                  alt="Scanning"
+                  className="scan-tech-img"
+                />
+              )}
               <div className="scan-tech-laser"></div>
               <div className="scan-tech-grid"></div>
+              <div className="scan-hud-corner hud-tl"></div>
+              <div className="scan-hud-corner hud-tr"></div>
+              <div className="scan-hud-corner hud-bl"></div>
+              <div className="scan-hud-corner hud-br"></div>
             </div>
 
             <div className="scan-tech-info">
-              <h3>{lang === 'vi' ? 'AI Đang Phân Tích Hóa Đơn...' : 'AI Analyzing Invoice...'}</h3>
+              <div className="spinner" style={{ margin: '0 auto 14px', width: '40px', height: '40px' }}></div>
+              <h3>AI đang phân tích & bóc tách hóa đơn...</h3>
               <p className="scan-tech-sub">
-                {lang === 'vi' ? 'Hệ thống đang chạy mạng nơ-ron nhận diện ký tự & trích xuất bảng biểu' : 'Neural network processing OCR recognition & field extraction'}
+                Quá trình nhận diện ký tự quang học (OCR) và chuẩn hóa dữ liệu mất khoảng 10 - 20 giây
               </p>
 
-              {/* Progress step indicators */}
               <div className="scan-steps-list">
-                <div className={`scan-step-item ${scanStep >= 1 ? 'active' : ''} ${scanStep > 1 ? 'done' : ''}`}>
-                  <span className="step-dot">{scanStep > 1 ? '✓' : '1'}</span>
-                  <span>{lang === 'vi' ? 'Tải ảnh & tiền xử lý OpenCV' : 'Image Upload & OpenCV Preprocessing'}</span>
+                <div className="scan-step-item done">
+                  <span className="step-dot"><Check size={13} strokeWidth={2.2} /></span>
+                  <span>Tiền xử lý ảnh & cân chỉnh phối cảnh</span>
                 </div>
-                <div className={`scan-step-item ${scanStep >= 2 ? 'active' : ''} ${scanStep > 2 ? 'done' : ''}`}>
-                  <span className="step-dot">{scanStep > 2 ? '✓' : (scanStep === 2 ? '⚡' : '2')}</span>
-                  <span>{lang === 'vi' ? 'Nhận diện quang học PaddleOCR' : 'PaddleOCR Optical Character Recognition'}</span>
+                <div className="scan-step-item active">
+                  <span className="step-dot"><Cpu size={13} strokeWidth={1.75} /></span>
+                  <span>Nhận diện văn bản OCR & trích xuất thông tin AI</span>
                 </div>
-                <div className={`scan-step-item ${scanStep >= 3 ? 'active' : ''}`}>
-                  <span className="step-dot">{scanStep === 3 ? '✨' : '3'}</span>
-                  <span>{lang === 'vi' ? 'Trích xuất thực thể AI (LLM / Parser)' : 'AI Entity Extraction (Store, Items, VAT)'}</span>
+                <div className="scan-step-item">
+                  <span className="step-dot">3</span>
+                  <span>Chuẩn bị bảng dữ liệu để bạn kiểm tra</span>
                 </div>
               </div>
 
               <div className="scan-progress-bar-wrap">
-                <div className="scan-progress-bar-fill" style={{ width: scanStep === 1 ? '35%' : scanStep === 2 ? '70%' : '95%' }}></div>
+                <div
+                  className="scan-progress-bar-fill"
+                  style={{ width: '75%' }}
+                ></div>
               </div>
             </div>
           </div>
         </div>
-      ) : isReviewing ? (
-        /* ======================================================== */
-        /* --- BƯỚC 2: KIỂM TRA & CHỈNH SỬA THÔNG TIN TRƯỚC SUBMIT --- */
-        /* ======================================================== */
-        <div className="scan-review-wrap animate-fade-in">
-          {/* Header Notice */}
-          <div className="scan-review-notice">
-            <div className="scan-review-notice-icon">📝</div>
-            <div className="scan-review-notice-text">
-              <h4>{lang === 'vi' ? 'Bước kiểm tra & chỉnh sửa thông tin' : 'Verification & Edit Step'}</h4>
-              <p>
-                {lang === 'vi' 
-                  ? 'AI đã nhận diện các trường bên dưới. Bạn có thể kiểm tra và chỉnh sửa lại dữ liệu cho chính xác. Sau khi bấm "Xác nhận & Lưu hóa đơn", hóa đơn sẽ được khóa cố định và không thể chỉnh sửa nữa.' 
-                  : 'AI has extracted the fields below. You can verify and edit them. Once submitted, the invoice will be locked and cannot be edited again.'}
+      ) : !extractedInvoice ? (
+        /* ==================== STEP 1: 2-COLUMN UPLOAD + LIVE PREVIEW ==================== */
+        <div className="scan-step1-grid">
+          {/* LEFT COLUMN: Dropzone (with buttons inside) + OCR Photography Tips */}
+          <div className="scan-left-col">
+            <div
+              className={`scan-dropzone-card ${isDragging ? 'is-dragging' : ''} ${preview ? 'has-file' : ''}`}
+              onClick={() => fileInputRef.current?.click()}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+            >
+              <div className="scan-hud-corner hud-tl"></div>
+              <div className="scan-hud-corner hud-tr"></div>
+              <div className="scan-hud-corner hud-bl"></div>
+              <div className="scan-hud-corner hud-br"></div>
+
+              <div className="scan-dropzone-icon">
+                <UploadCloud size={32} strokeWidth={1.75} />
+              </div>
+
+              <h3>Kéo thả ảnh hóa đơn vào đây</h3>
+              <p className="scan-dropzone-sub">
+                Hỗ trợ định dạng JPG, PNG, WEBP rõ nét. Dung lượng tối đa 15MB.
               </p>
+
+              {/* Consolidated Buttons INSIDE Dropzone */}
+              <div
+                className="scan-dropzone-btns"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  style={{ width: 'auto', padding: '10px 18px' }}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <ImageIcon size={17} strokeWidth={1.75} />
+                  Chọn ảnh từ máy
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  style={{ width: 'auto', padding: '10px 18px' }}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <FileText size={17} strokeWidth={1.75} />
+                  Chọn file mẫu
+                </button>
+              </div>
+
+              {selectedFile && (
+                <div className="scan-selected-pill">
+                  <CheckCircle2 size={14} strokeWidth={1.75} style={{ color: 'var(--success)' }} />
+                  <span>Đã chọn: <strong>{selectedFile.name}</strong> ({(selectedFile.size / 1024).toFixed(1)} KB)</span>
+                </div>
+              )}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => handleFileSelect(e.target.files[0])}
+              />
             </div>
-            <div className="scan-review-step-badge">
-              <span>{lang === 'vi' ? 'Bước 2 / 2' : 'Step 2 / 2'}</span>
+
+            {/* OCR Best Practices Checklist Card */}
+            <div className="scan-tips-card">
+              <div className="scan-tips-header">
+                <ShieldCheck size={18} strokeWidth={1.75} style={{ color: 'var(--primary)' }} />
+                <h4>Gợi ý chụp ảnh chuẩn OCR</h4>
+              </div>
+              <ul className="scan-tips-list">
+                <li>
+                  <Check size={15} strokeWidth={2} className="tip-check" />
+                  <span>Đặt hóa đơn trên mặt phẳng đủ sáng, tránh bóng đổ che khuất chữ số.</span>
+                </li>
+                <li>
+                  <Check size={15} strokeWidth={2} className="tip-check" />
+                  <span>Chụp vuông góc toàn bộ mặt hóa đơn (từ tên cửa hàng đến tổng tiền ở đáy).</span>
+                </li>
+                <li>
+                  <Check size={15} strokeWidth={2} className="tip-check" />
+                  <span>Đảm bảo các dòng mặt hàng và đơn giá không bị nhòe hoặc gấp nếp.</span>
+                </li>
+              </ul>
             </div>
           </div>
 
-          {/* Two-Column Grid: Image Preview (Left) vs Form (Right) */}
-          <div className="scan-review-grid">
-            {/* Left: Original Receipt Preview */}
-            <div className="scan-review-col-left">
-              <div className="scan-review-card sticky-card">
-                <div className="scan-card-header">
-                  <h4>📷 {lang === 'vi' ? 'Ảnh hóa đơn gốc' : 'Original Invoice Photo'}</h4>
-                  {previewUrl && (
-                    <button 
-                      type="button" 
-                      className="btn btn-sm btn-outline"
-                      onClick={() => setIsZoomed(!isZoomed)}
-                    >
-                      {isZoomed ? (lang === 'vi' ? '🔍 Thu nhỏ' : 'Zoom Out') : (lang === 'vi' ? '🔍 Phóng to' : 'Zoom In')}
-                    </button>
-                  )}
+          {/* RIGHT COLUMN: Live Preview & Extraction Action Panel */}
+          <div className="scan-right-col">
+            <div className="scan-preview-panel">
+              <div className="scan-preview-panel-head">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Eye size={18} strokeWidth={1.75} style={{ color: 'var(--primary)' }} />
+                  <h4>Xem trước & Kết quả bóc tách</h4>
                 </div>
-                <div className={`scan-review-img-box ${isZoomed ? 'zoomed' : ''}`}>
-                  {previewUrl ? (
-                    <img src={previewUrl} alt="Receipt preview" className="scan-review-img" />
-                  ) : (
-                    <div className="scan-review-noimg">
-                      <span>📄</span>
-                      <p>{lang === 'vi' ? 'Không có ảnh xem trước' : 'No image preview'}</p>
-                    </div>
-                  )}
-                </div>
-                <div className="scan-review-file-meta">
-                  <span>Mã tạm: <strong>{editData.invoice_id}</strong></span>
-                  {file && <span>• {(file.size / 1024).toFixed(1)} KB</span>}
-                </div>
-              </div>
-            </div>
-
-            {/* Right: Editable Fields Form */}
-            <div className="scan-review-col-right">
-              {/* Card 1: Thông tin chung */}
-              <div className="scan-review-card">
-                <div className="scan-card-header">
-                  <h4>🏪 {lang === 'vi' ? 'Thông tin cửa hàng & thời gian' : 'Store & Time Information'}</h4>
-                </div>
-                <div className="scan-form-grid">
-                  <div className="form-group">
-                    <label>{lang === 'vi' ? 'Tên cửa hàng / Thương hiệu' : 'Store Name / Brand'} <span className="req">*</span></label>
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      value={editData.store_name} 
-                      onChange={(e) => handleFieldChange('store_name', e.target.value)}
-                      placeholder={lang === 'vi' ? 'Ví dụ: Phúc Long, Highlands Coffee...' : 'e.g., Starbucks...'}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>{lang === 'vi' ? 'Địa chỉ cửa hàng' : 'Store Address'}</label>
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      value={editData.store_address} 
-                      onChange={(e) => handleFieldChange('store_address', e.target.value)}
-                      placeholder={lang === 'vi' ? 'Ví dụ: 514A Lê Trọng Tấn, TP. Hồ Chí Minh' : 'Store address'}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>{lang === 'vi' ? 'Ngày mua (DD/MM/YYYY)' : 'Date (DD/MM/YYYY)'}</label>
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      value={editData.date} 
-                      onChange={(e) => handleFieldChange('date', e.target.value)}
-                      placeholder="DD/MM/YYYY"
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>{lang === 'vi' ? 'Thuế VAT (VNĐ)' : 'VAT Tax (VND)'}</label>
-                    <input 
-                      type="number" 
-                      className="form-input" 
-                      value={editData.tax_amount} 
-                      onChange={(e) => handleFieldChange('tax_amount', e.target.value)}
-                      min="0"
-                      step="1000"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Card 2: Danh sách món hàng */}
-              <div className="scan-review-card">
-                <div className="scan-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <h4>🛍️ {lang === 'vi' ? 'Danh sách sản phẩm / dịch vụ' : 'Items / Products'} ({editData.items.length})</h4>
-                  <button 
-                    type="button" 
-                    className="btn btn-sm btn-outline"
-                    onClick={handleAddItem}
+                {preview && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={handleResetScan}
                   >
-                    + {lang === 'vi' ? 'Thêm món' : 'Add Item'}
+                    <RotateCcw size={14} strokeWidth={1.75} />
+                    Đổi ảnh khác
                   </button>
-                </div>
-
-                <div className="scan-items-table-wrap">
-                  <table className="scan-items-table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: '40%' }}>{lang === 'vi' ? 'Tên món' : 'Item Name'}</th>
-                        <th style={{ width: '15%' }}>{lang === 'vi' ? 'SL' : 'Qty'}</th>
-                        <th style={{ width: '20%' }}>{lang === 'vi' ? 'Đơn giá (đ)' : 'Price (VND)'}</th>
-                        <th style={{ width: '20%' }}>{lang === 'vi' ? 'Thành tiền (đ)' : 'Total (VND)'}</th>
-                        <th style={{ width: '5%', textAlign: 'center' }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {editData.items.length > 0 ? (
-                        editData.items.map((it, idx) => (
-                          <tr key={idx}>
-                            <td>
-                              <input 
-                                type="text" 
-                                className="form-input form-input-sm"
-                                value={it.item_name}
-                                onChange={(e) => handleItemChange(idx, 'item_name', e.target.value)}
-                                placeholder={lang === 'vi' ? 'Tên sản phẩm' : 'Product name'}
-                              />
-                            </td>
-                            <td>
-                              <input 
-                                type="number" 
-                                className="form-input form-input-sm"
-                                value={it.quantity}
-                                onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
-                                min="1"
-                              />
-                            </td>
-                            <td>
-                              <input 
-                                type="number" 
-                                className="form-input form-input-sm"
-                                value={it.unit_price}
-                                onChange={(e) => handleItemChange(idx, 'unit_price', e.target.value)}
-                                min="0"
-                                step="1000"
-                              />
-                            </td>
-                            <td>
-                              <input 
-                                type="number" 
-                                className="form-input form-input-sm font-semibold"
-                                value={it.total_price}
-                                onChange={(e) => handleItemChange(idx, 'total_price', e.target.value)}
-                                min="0"
-                                step="1000"
-                              />
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <button 
-                                type="button" 
-                                className="btn-icon-danger"
-                                onClick={() => handleRemoveItem(idx)}
-                                title={lang === 'vi' ? 'Xóa món này' : 'Delete item'}
-                              >
-                                ✕
-                              </button>
-                            </td>
-                          </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan="5" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>
-                            {lang === 'vi' ? 'Chưa có sản phẩm nào. Bấm "+ Thêm món" để thêm.' : 'No items. Click "+ Add Item" to add.'}
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                )}
               </div>
 
-              {/* Card 3: Tổng thanh toán */}
-              <div className="scan-review-card scan-total-card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <span className="scan-total-label">{lang === 'vi' ? 'Tổng thanh toán thực tế:' : 'Total Amount:'}</span>
-                    <div className="scan-total-display">
-                      {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(editData.total_amount || 0)}
-                    </div>
+              {!preview ? (
+                <div className="scan-preview-empty">
+                  <div className="scan-empty-illustration">
+                    <Receipt size={38} strokeWidth={1.5} />
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <button 
-                      type="button" 
-                      className="btn btn-sm btn-outline"
-                      onClick={handleRecalculateTotal}
-                      title={lang === 'vi' ? 'Tự động cộng tiền các món hàng + VAT' : 'Recalculate sum of items + VAT'}
+                  <h4>Chưa có chứng từ nào được chọn</h4>
+                  <p>
+                    Sau khi bạn tải ảnh hóa đơn ở khung bên trái, bản xem trước chất lượng cao và nút kích hoạt AI OCR sẽ xuất hiện tại đây.
+                  </p>
+                  <div className="scan-empty-features">
+                    <span><Sparkles size={14} strokeWidth={1.75} /> Tự động nhận diện tên siêu thị & MST</span>
+                    <span><ListChecks size={14} strokeWidth={1.75} /> Bóc tách chi tiết từng dòng sản phẩm</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="scan-preview-ready">
+                  <div className="scan-live-img-frame">
+                    <img src={preview} alt="Receipt Preview" className="scan-live-img" />
+                    <div className="scan-ambient-laser"></div>
+                  </div>
+
+                  <div className="scan-ready-footer">
+                    <div className="scan-ready-meta">
+                      <strong>{selectedFile?.name}</strong>
+                      <span>Sẵn sàng phân tích bằng AI OCR</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-glow"
+                      style={{ width: '100%', padding: '14px 24px', fontSize: '15px' }}
+                      onClick={() => handleScan(false)}
+                      disabled={loading}
                     >
-                      ⚡ {lang === 'vi' ? 'Tự tính lại' : 'Auto Recalc'}
+                      <Sparkles size={18} strokeWidth={1.75} />
+                      Bắt đầu đọc & bóc tách hóa đơn
                     </button>
-                    <div style={{ width: '150px' }}>
-                      <input 
-                        type="number" 
-                        className="form-input font-bold"
-                        value={editData.total_amount}
-                        onChange={(e) => handleFieldChange('total_amount', e.target.value)}
-                        min="0"
-                        step="1000"
-                      />
-                    </div>
                   </div>
                 </div>
-              </div>
-
-              {/* Bottom Actions Bar */}
-              <div className="scan-review-bottom-bar">
-                <button 
-                  type="button" 
-                  className="btn btn-outline"
-                  onClick={handleCancelReview}
-                  disabled={isSubmitting}
-                >
-                  ✕ {lang === 'vi' ? 'Hủy & Quét lại' : 'Discard & Re-scan'}
-                </button>
-                <button 
-                  type="button" 
-                  className="btn btn-primary btn-glow"
-                  onClick={handleSubmitReview}
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? (
-                    lang === 'vi' ? '⏳ Đang lưu & khóa hóa đơn...' : 'Saving...'
-                  ) : (
-                    lang === 'vi' ? '✓ Xác nhận & Lưu hóa đơn (Submit)' : '✓ Confirm & Submit'
-                  )}
-                </button>
-              </div>
+              )}
             </div>
           </div>
         </div>
       ) : (
-        /* ======================================================== */
-        /* --- BƯỚC 1: TẢI ẢNH HÓA ĐƠN --- */
-        /* ======================================================== */
-        <>
-          <div 
-            className={`scan-area ${previewUrl ? 'has-image' : ''} ${isDragging ? 'is-dragging' : ''}`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onClick={() => !previewUrl && fileInputRef.current.click()}
-          >
-            {/* Viewfinder HUD Corners */}
-            <span className="scan-hud-corner hud-tl"></span>
-            <span className="scan-hud-corner hud-tr"></span>
-            <span className="scan-hud-corner hud-bl"></span>
-            <span className="scan-hud-corner hud-br"></span>
-
-            {previewUrl ? (
-              <div className="scan-preview-box">
-                <img src={previewUrl} alt="Invoice Preview" className="scan-preview-img" />
-                <div className="scan-ambient-laser"></div>
-                <div className="scan-file-badge">
-                  <span>📄 {file?.name || 'invoice_image.jpg'}</span>
-                  <span>•</span>
-                  <span>{file ? `${(file.size / 1024).toFixed(1)} KB` : ''}</span>
-                </div>
-              </div>
-            ) : (
-              <div className="scan-empty-prompt">
-                <div className="scan-animated-icon-wrap">
-                  <span className="scan-floating-icon">🧾</span>
-                  <span className="scan-pulse-ring"></span>
-                </div>
-                <h3>{lang === 'vi' ? 'Kéo thả hoặc tải ảnh hóa đơn vào đây' : 'Drag & drop or upload invoice photo here'}</h3>
-                <p>{lang === 'vi' ? 'Hỗ trợ định dạng JPG, PNG, WEBP, PDF (Tối đa 10MB)' : 'Supports JPG, PNG, WEBP, PDF (Up to 10MB)'}</p>
-                <div className="scan-drag-tip">
-                  <span>💡 {lang === 'vi' ? 'Chụp thẳng đứng, đủ ánh sáng để AI nhận diện chính xác 100%' : 'Take a straight, well-lit photo for best accuracy'}</span>
-                </div>
-              </div>
-            )}
+        /* ==================== STEP 2: REVIEW & EDIT FORM ==================== */
+        <form onSubmit={handleConfirmSubmit} className="scan-review-wrap">
+          <div className="scan-review-notice">
+            <div className="scan-review-notice-icon" style={{ color: 'var(--primary)', display: 'flex' }}>
+              <FileText size={24} strokeWidth={1.75} />
+            </div>
+            <div className="scan-review-notice-text">
+              <h4>Bước kiểm duyệt dữ liệu trước khi lưu</h4>
+              <p>
+                Hệ thống AI đã bóc tách các trường thông tin bên dưới. Bạn có thể sửa lại bất kỳ ký tự nào bị nhầm lẫn, sau đó nhấn{' '}
+                <strong>"Xác nhận & Lưu hóa đơn"</strong> để khóa dữ liệu.
+              </p>
+            </div>
+            <span className="scan-review-step-badge">Bước 2 / 2</span>
           </div>
 
-          <div className="scan-actions">
-            <input 
-              type="file" 
-              accept="image/*" 
-              style={{ display: 'none' }} 
-              ref={fileInputRef} 
-              onChange={handleFileChange} 
-            />
-            
-            {previewUrl ? (
-              <>
-                <button className="btn btn-outline" type="button" onClick={() => fileInputRef.current.click()}>
-                  🔄 {lang === 'vi' ? 'Đổi ảnh khác' : 'Change Image'}
+          <div className="scan-review-grid">
+            {/* Left Column: Original Receipt Image */}
+            <div className="scan-review-left">
+              <div className="scan-review-card sticky-card">
+                <div className="scan-card-header">
+                  <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <ImageIcon size={17} strokeWidth={1.75} style={{ color: 'var(--primary)' }} />
+                    Ảnh hóa đơn gốc
+                  </h4>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setZoomImage(!zoomImage)}
+                  >
+                    {zoomImage ? <ZoomOut size={15} strokeWidth={1.75} /> : <ZoomIn size={15} strokeWidth={1.75} />}
+                    {zoomImage ? 'Thu nhỏ' : 'Phóng to'}
+                  </button>
+                </div>
+
+                <div className={`scan-review-img-box ${zoomImage ? 'zoomed' : ''}`}>
+                  {preview && (
+                    <img
+                      src={preview}
+                      alt="Invoice Original"
+                      className="scan-review-img"
+                    />
+                  )}
+                </div>
+
+                {selectedFile && (
+                  <div className="scan-review-file-meta">
+                    <span>{selectedFile.name}</span>
+                    <span>•</span>
+                    <span>{(selectedFile.size / 1024).toFixed(1)} KB</span>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ width: '100%', marginTop: '14px' }}
+                  onClick={handleResetScan}
+                >
+                  <RotateCcw size={16} strokeWidth={1.75} />
+                  Quét lại ảnh khác
                 </button>
-                <button className="btn btn-primary btn-glow" type="button" onClick={handleScan}>
-                  ⚡ {lang === 'vi' ? 'Bắt đầu đọc hóa đơn' : 'Scan & Extract'}
+              </div>
+            </div>
+
+            {/* Right Column: Editable Fields */}
+            <div className="scan-review-right">
+              {/* General Info Card */}
+              <div className="scan-review-card">
+                <div className="scan-card-header">
+                  <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Store size={17} strokeWidth={1.75} style={{ color: 'var(--primary)' }} />
+                    Thông tin chung
+                  </h4>
+                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                    Mã HĐ: #{extractedInvoice.invoice_id?.slice(-8)}
+                  </span>
+                </div>
+
+                <div className="scan-form-grid">
+                  <div className="form-group">
+                    <label>Tên cửa hàng / Đơn vị bán *</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={formData.store_name}
+                      onChange={(e) => handleFieldChange('store_name', e.target.value)}
+                      placeholder="Nhập tên cửa hàng..."
+                      required
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Ngày phát hành hóa đơn</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={formData.date}
+                      onChange={(e) => handleFieldChange('date', e.target.value)}
+                      placeholder="VD: 23/02/2019 21:50"
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                    <label>Địa chỉ cửa hàng</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={formData.store_address}
+                      onChange={(e) => handleFieldChange('store_address', e.target.value)}
+                      placeholder="Nhập địa chỉ trên hóa đơn..."
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Phân loại hóa đơn</label>
+                    <select
+                      className="form-input"
+                      value={formData.invoice_type}
+                      onChange={(e) => handleFieldChange('invoice_type', e.target.value)}
+                    >
+                      <option value="Supermarket">Siêu thị / Bán lẻ (Supermarket)</option>
+                      <option value="Cafe/Restaurant">Nhà hàng / Đồ uống (F&B)</option>
+                      <option value="Utility">Hóa đơn tiện ích (Điện, Nước, Viễn thông)</option>
+                      <option value="Shopping">Mua sắm (Shopping)</option>
+                      <option value="Other">Khác (Other)</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Tiền thuế VAT (đ)</label>
+                    <input
+                      type="number"
+                      className="form-input"
+                      value={formData.tax_amount}
+                      onChange={(e) => handleFieldChange('tax_amount', e.target.value)}
+                      min="0"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Line Items Card */}
+              <div className="scan-review-card">
+                <div className="scan-card-header">
+                  <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <ListChecks size={17} strokeWidth={1.75} style={{ color: 'var(--primary)' }} />
+                    Danh sách sản phẩm ({formData.items.length})
+                  </h4>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={handleAddItem}
+                  >
+                    <Plus size={15} strokeWidth={1.75} />
+                    Thêm dòng
+                  </button>
+                </div>
+
+                {formData.items.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '14px' }}>
+                    Chưa có mặt hàng nào được bóc tách. Nhấn <strong>"Thêm dòng"</strong> để nhập bổ sung.
+                  </div>
+                ) : (
+                  <div className="scan-items-table-wrap">
+                    <table className="scan-items-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: '40%' }}>Tên mặt hàng</th>
+                          <th style={{ width: '14%', textAlign: 'center' }}>SL</th>
+                          <th style={{ width: '20%', textAlign: 'right' }}>Đơn giá (đ)</th>
+                          <th style={{ width: '20%', textAlign: 'right' }}>Thành tiền (đ)</th>
+                          <th style={{ width: '6%' }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {formData.items.map((item, idx) => (
+                          <tr key={idx}>
+                            <td>
+                              <input
+                                type="text"
+                                className="form-input form-input-sm"
+                                value={item.name}
+                                onChange={(e) => handleItemChange(idx, 'name', e.target.value)}
+                                placeholder="Tên sản phẩm..."
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                className="form-input form-input-sm"
+                                style={{ textAlign: 'center' }}
+                                value={item.quantity}
+                                onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
+                                min="1"
+                                step="any"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                className="form-input form-input-sm"
+                                style={{ textAlign: 'right' }}
+                                value={item.unit_price}
+                                onChange={(e) => handleItemChange(idx, 'unit_price', e.target.value)}
+                                min="0"
+                              />
+                            </td>
+                            <td>
+                              <input
+                                type="number"
+                                className="form-input form-input-sm"
+                                style={{ textAlign: 'right', fontWeight: 600 }}
+                                value={item.total_price}
+                                onChange={(e) => handleItemChange(idx, 'total_price', e.target.value)}
+                                min="0"
+                              />
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <button
+                                type="button"
+                                className="btn-icon-danger"
+                                onClick={() => handleRemoveItem(idx)}
+                                title="Xóa dòng này"
+                              >
+                                <Trash2 size={14} strokeWidth={1.75} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Payment Summary Card */}
+              <div className="scan-review-card scan-total-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                  <div>
+                    <div className="scan-total-label">Tổng thanh toán cuối cùng (VNĐ) *</div>
+                    <div className="scan-total-display">{formatVND(formData.total_amount)}</div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={handleRecalculateTotal}
+                      title="Cộng tổng thành tiền các dòng sản phẩm + VAT"
+                    >
+                      Tính lại từ các mặt hàng
+                    </button>
+                    <input
+                      type="number"
+                      className="form-input"
+                      style={{ width: '180px', fontWeight: 700, fontSize: '16px', textAlign: 'right' }}
+                      value={formData.total_amount}
+                      onChange={(e) => handleFieldChange('total_amount', e.target.value)}
+                      min="0"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="scan-review-bottom-bar">
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={handleResetScan}
+                  disabled={submitting}
+                >
+                  Hủy & Quét lại
                 </button>
-              </>
-            ) : (
-              <>
-                <button className="btn btn-primary btn-glow" type="button" onClick={() => fileInputRef.current.click()}>
-                  📷 {lang === 'vi' ? 'Chọn ảnh từ máy' : 'Upload from device'}
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-glow"
+                  style={{ width: 'auto', minWidth: '240px' }}
+                  disabled={submitting}
+                >
+                  <CheckCircle2 size={18} strokeWidth={1.75} />
+                  {submitting ? 'Đang lưu & khóa dữ liệu...' : 'Xác nhận & Lưu hóa đơn'}
                 </button>
-                <button className="btn btn-outline" type="button" onClick={() => fileInputRef.current.click()}>
-                  📁 {lang === 'vi' ? 'Chọn file mẫu' : 'Browse Files'}
-                </button>
-              </>
-            )}
+              </div>
+            </div>
           </div>
-        </>
+        </form>
       )}
     </div>
   );

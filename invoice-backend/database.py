@@ -1,8 +1,10 @@
-﻿import weaviate
+import weaviate
 import os
 
 # Lấy URL từ biến môi trường (nếu chạy Docker), ngược lại fallback về localhost (nếu chạy code chay)
-WEAVIATE_URL = os.getenv("WEAVIATE_URL", "http://localhost:8080")
+from dotenv import load_dotenv
+load_dotenv()
+WEAVIATE_URL = os.getenv("WEAVIATE_URL", "http://127.0.0.1:8080")
 client = weaviate.Client(url=WEAVIATE_URL)
 import json
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -53,10 +55,24 @@ def setup_database():
             print("[*] Added image_path property")
         except Exception:
             pass
+        try:
+            client.schema.property.create("Invoice", {"name": "tax_amount", "dataType": ["number"]})
+            print("[*] Added tax_amount property")
+        except Exception:
+            pass
+        try:
+            client.schema.property.create("Invoice", {"name": "invoice_type", "dataType": ["text"]})
+            print("[*] Added invoice_type property")
+        except Exception:
+            pass
+        try:
+            client.schema.property.create("Invoice", {"name": "delete_reason", "dataType": ["text"]})
+            print("[*] Added delete_reason property")
+        except Exception:
+            pass
 
     if client.schema.exists("Invoice") and client.schema.exists("InvoiceItem"):
-
-        print("[*] Log message removed due to unicode")
+        print("[*] Weaviate Schema đã tồn tại và sẵn sàng.")
         return
 
     # 1. Tạo Schema cho Chunk Con (Từng món hàng) — chỉ khi chưa có
@@ -83,10 +99,16 @@ def setup_database():
             "properties": [
                 {"name": "invoice_id", "dataType": ["text"]},
                 {"name": "store_name", "dataType": ["text"]},
+                {"name": "store_address", "dataType": ["text"]},
                 {"name": "date", "dataType": ["text"]},
-                                {"name": "total_amount", "dataType": ["number"]},
+                {"name": "invoice_type", "dataType": ["text"]},
+                {"name": "total_amount", "dataType": ["number"]},
+                {"name": "tax_amount", "dataType": ["number"]},
+                {"name": "user_id", "dataType": ["int"]},
                 {"name": "is_deleted", "dataType": ["boolean"]},
+                {"name": "is_submitted", "dataType": ["boolean"]},
                 {"name": "deleted_at", "dataType": ["date"]},
+                {"name": "delete_reason", "dataType": ["text"]},
                 {"name": "image_path", "dataType": ["text"]},
                 {"name": "raw_text", "dataType": ["text"]},
                 {
@@ -97,25 +119,8 @@ def setup_database():
             ]
         }
         client.schema.create_class(invoice_schema)
-    
-    
-    
-    # Nâng cấp schema cho đợt 9: Thêm user_id vào Invoice
-    if client.schema.exists("Invoice"):
-        try:
-            client.schema.property.create("Invoice", {"name": "user_id", "dataType": ["int"]})
-        except Exception as e:
-            pass
-        try:
-            client.schema.property.create("Invoice", {"name": "is_deleted", "dataType": ["boolean"]})
-        except Exception:
-            pass
-        try:
-            client.schema.property.create("Invoice", {"name": "deleted_at", "dataType": ["date"]})
-        except Exception:
-            pass
             
-    print("[*] Log message removed due to unicode")
+    print("[*] Đã khởi tạo thành công Weaviate Schema (Invoice & InvoiceItem).")
 
 
 def save_invoice(invoice_data, user_id: int = 0, is_submitted: bool = False):
@@ -128,10 +133,14 @@ def save_invoice(invoice_data, user_id: int = 0, is_submitted: bool = False):
             "store_name": invoice_data.store_name,
             "store_address": getattr(invoice_data, "store_address", "") or "",
             "date": invoice_data.date,
+            "invoice_type": getattr(invoice_data, "invoice_type", "Other") or "Other",
             "total_amount": float(invoice_data.total_amount),
+            "tax_amount": float(getattr(invoice_data, "tax_amount", 0.0) or 0.0),
             "raw_text": invoice_data.raw_text,
+            "image_path": getattr(invoice_data, "image_path", "") or "",
             "user_id": user_id,
             "is_deleted": False,
+            "delete_reason": getattr(invoice_data, "delete_reason", "") or "",
             "is_submitted": bool(is_submitted or getattr(invoice_data, "is_submitted", False))
         },
         class_name="Invoice"
@@ -174,47 +183,84 @@ def save_invoice(invoice_data, user_id: int = 0, is_submitted: bool = False):
             )
             saved_chunks += 1
             
-    print("[*] Log message removed due to unicode")
+    print(f"[*] Đã lưu hóa đơn {invoice_data.invoice_id} kèm {saved_chunks} món hàng vào Weaviate.")
+
+def _resolve_image_path(inv: dict) -> dict:
+    """Tự động khôi phục đường dẫn ảnh nếu file tồn tại trong thư mục uploads/ và bổ sung các trường mặc định"""
+    if not inv or not isinstance(inv, dict):
+        return inv
+    inv_id = inv.get("invoice_id")
+    if inv_id and not inv.get("image_path"):
+        uploads_dir = os.path.join(BASE_DIR, "uploads")
+        for ext in ("jpg", "png", "jpeg", "webp"):
+            candidate = f"{inv_id}.{ext}"
+            if os.path.exists(os.path.join(uploads_dir, candidate)):
+                inv["image_path"] = f"uploads/{candidate}"
+                break
+    if not inv.get("invoice_type"):
+        inv["invoice_type"] = "Other"
+    tot = float(inv.get("total_amount") or 0.0)
+    tax = float(inv.get("tax_amount") or 0.0)
+    inv["subtotal"] = round(max(0.0, tot - tax), 2)
+    return inv
 
 def get_invoice_by_id(invoice_id: str, user_id: int = 0):
-    """Truy vấn hóa đơn từ Weaviate dựa vào invoice_id kèm liên kết chéo"""
-    result = client.query.get(
-        "Invoice", ["invoice_id", "store_name", "store_address", "date", "total_amount", "raw_text", "user_id", "is_deleted", "image_path", "is_submitted", "hasItems {... on InvoiceItem { item_name quantity unit_price total_price }}"]
-    ).with_where({
+    """Truy vấn hóa đơn từ Weaviate dựa vào invoice_id kèm liên kết chéo và kiểm tra quyền sở hữu"""
+    where_cond = {
         "path": ["invoice_id"],
         "operator": "Equal",
         "valueString": invoice_id
-    }).do()
+    }
+    if user_id and int(user_id) > 0:
+        where_cond = {
+            "operator": "And",
+            "operands": [
+                where_cond,
+                {"path": ["user_id"], "operator": "Equal", "valueNumber": int(user_id)}
+            ]
+        }
+
+    result = client.query.get(
+        "Invoice", ["invoice_id", "store_name", "store_address", "date", "invoice_type", "total_amount", "tax_amount", "raw_text", "user_id", "is_deleted", "delete_reason", "image_path", "is_submitted", "hasItems {... on InvoiceItem { item_name quantity unit_price total_price }}"]
+    ).with_where(where_cond).do()
     
     try:
         items = result["data"]["Get"]["Invoice"]
         if items:
-            return items[0]
+            return _resolve_image_path(items[0])
     except Exception as e:
-        print("[*] Log message removed due to unicode")
+        print(f"[!] Lỗi khi truy vấn hóa đơn {invoice_id}: {e}")
     return None    
 
 # ==========================================
 # --- NÂNG CẤP ĐỢT 9: TỐI ƯU KHOẢNG CÁCH VECTOR (DISTANCE THRESHOLD) ---
 # ==========================================
 
-def search_relevant_items(question: str, invoice_id: str, limit: int = 3, max_distance: float = 0.65):
+def search_relevant_items(question: str, invoice_id: str, limit: int = 25, max_distance: float = 0.75, user_id: int = None):
     """Đợt 7 & 9: Vector Search Chunk con với ngưỡng khoảng cách lọc nhiễu"""
     try:
+        where_filter = {
+            "path": ["invoice_id_ref"],
+            "operator": "Equal",
+            "valueString": invoice_id
+        }
+        if user_id is not None:
+            where_filter = {
+                "operator": "And",
+                "operands": [
+                    where_filter,
+                    {"path": ["user_id"], "operator": "Equal", "valueNumber": int(user_id)}
+                ]
+            }
         result = client.query.get(
             "InvoiceItem", ["item_name", "quantity", "unit_price", "total_price"]
         ).with_near_text({
             "concepts": [question],
             "distance": max_distance
-        }).with_where({
-            "path": ["invoice_id_ref"],
-            "operator": "Equal",
-            "valueString": invoice_id
-        }).with_where({"path": ["user_id"], "operator": "Equal", "valueNumber": user_id}).with_limit(limit).do()
+        }).with_where(where_filter).with_limit(limit).do()
         
         return result.get("data", {}).get("Get", {}).get("InvoiceItem", [])
     except Exception as e:
-        pass
         return []
 
 def global_search_invoices(search_query: str, limit: int = 15, max_distance: float = 0.7, user_id: int = 0):
@@ -291,11 +337,8 @@ def get_all_active_items_for_user(user_id: int = 0):
 # ==========================================
 
 def get_all_invoices_sorted(descending: bool = True, user_id: int = 0):
-    """Lấy tất cả hóa đơn và sắp xếp theo ngày tháng thực tế.
+    """Lấy tất cả hóa đơn và sắp xếp theo thời gian tải lên.
     descending=True: mới nhất trước, descending=False: cũ nhất trước."""
-    from datetime import datetime
-    import re
-    
     try:
         where_cond = {
             "operator": "And",
@@ -305,64 +348,14 @@ def get_all_invoices_sorted(descending: bool = True, user_id: int = 0):
             ]
         }
         result = client.query.get(
-            "Invoice", ["invoice_id", "store_name", "store_address", "date", "total_amount", "image_path", "raw_text"]
+            "Invoice", ["invoice_id", "store_name", "store_address", "date", "invoice_type", "total_amount", "tax_amount", "image_path", "raw_text"]
         ).with_additional(["creationTimeUnix"]).with_where(where_cond).with_limit(100).do()
         invoices = result.get("data", {}).get("Get", {}).get("Invoice", [])
     except Exception as e:
-        print("[*] Log message removed due to unicode")
+        print(f"[!] Lỗi khi lấy danh sách hóa đơn đã sắp xếp: {e}")
         return []
     
-    def parse_date(date_str):
-        """Parse nhiều định dạng ngày tháng phổ biến trong hóa đơn Việt Nam."""
-        if not date_str:
-            return datetime.min
-        
-        # Chuẩn hóa: loại bỏ khoảng trắng thừa
-        date_str = date_str.strip()
-        
-        # Thử các format phổ biến
-        formats = [
-            "%d/%m/%Y",      # 26/10/2025
-            "%d-%m-%Y",      # 26-10-2025
-            "%d.%m.%Y",      # 26.10.2025
-            "%Y-%m-%d",      # 2025-10-26
-            "%Y/%m/%d",      # 2025/10/26
-            "%d/%m/%y",      # 26/10/25
-            "%d-%m-%y",      # 26-10-25
-        ]
-        
-        for fmt in formats:
-            try:
-                return datetime.strptime(date_str, fmt)
-            except ValueError:
-                continue
-        
-        # Fallback: trích xuất ngày tháng bằng regex từ chuỗi phức tạp
-        # Ví dụ: "Ngày 26 tháng 10 năm 2025"
-        match = re.search(r'(\d{1,2})\s*/\s*(\d{1,2})\s*/\s*(\d{2,4})', date_str)
-        if match:
-            day, month, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
-            if year < 100:
-                year += 2000
-            try:
-                return datetime(year, month, day)
-            except ValueError:
-                pass
-        
-        match = re.search(r'(\d{1,2})\s*[-\.]\s*(\d{1,2})\s*[-\.]\s*(\d{2,4})', date_str)
-        if match:
-            day, month, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
-            if year < 100:
-                year += 2000
-            try:
-                return datetime(year, month, day)
-            except ValueError:
-                pass
-        
-        print("[*] Log message removed due to unicode")
-        return datetime.min
-    
-    # Sắp xếp theo ngày upload
+    # Sắp xếp theo thời gian upload
     invoices.sort(key=lambda inv: int(inv.get("_additional", {}).get("creationTimeUnix", 0)), reverse=descending)
     
     return invoices
@@ -385,7 +378,7 @@ def get_filtered_invoices(min_amount: float = None, max_amount: float = None, li
     if max_amount is not None:
         where_operands.append({"path": ["total_amount"], "operator": "LessThanEqual", "valueNumber": max_amount})
         
-    query = client.query.get("Invoice", ["invoice_id", "store_name", "store_address", "date", "total_amount", "image_path", "raw_text"])
+    query = client.query.get("Invoice", ["invoice_id", "store_name", "store_address", "date", "invoice_type", "total_amount", "tax_amount", "image_path", "raw_text", "is_submitted", "_additional { creationTimeUnix }"])
     
     # Ráp điều kiện lọc (nếu có)
     if len(where_operands) == 1:
@@ -398,22 +391,23 @@ def get_filtered_invoices(min_amount: float = None, max_amount: float = None, li
         result = query.with_limit(limit).do()
         invoices = result.get("data", {}).get("Get", {}).get("Invoice", [])
         
-        # Inject 'id' for frontend compatibility
+        # Inject 'id' for frontend compatibility & auto-resolve image_path
         for inv in invoices:
             if "invoice_id" in inv:
                 inv["id"] = inv["invoice_id"]
+            _resolve_image_path(inv)
                 
         return invoices
     except Exception as e:
-        print("[*] Log message removed due to unicode")
+        print(f"[!] Lỗi khi lọc danh sách hóa đơn: {e}")
         return []
 
-def delete_invoice_completely(invoice_id: str, user_id: int = 0):
-    """Đợt 8: Xóa triệt để Chunk Cha (Invoice) và Chunk Con (InvoiceItem)"""
+def delete_invoice_completely(invoice_id: str, user_id: int = 0, delete_file: bool = True):
+    """Đợt 8: Xóa triệt để Chunk Cha (Invoice), Chunk Con (InvoiceItem) và file ảnh vật lý"""
     success = False
     
-    # 1. Tìm UUID của Chunk Cha
-    inv_result = client.query.get("Invoice", ["_additional { id }"]).with_where(
+    # 1. Tìm UUID và image_path của Chunk Cha
+    inv_result = client.query.get("Invoice", ["image_path", "_additional { id }"]).with_where(
         {"operator": "And", "operands": [
             {"path": ["invoice_id"], "operator": "Equal", "valueString": invoice_id},
             {"path": ["user_id"], "operator": "Equal", "valueNumber": user_id}
@@ -424,12 +418,22 @@ def delete_invoice_completely(invoice_id: str, user_id: int = 0):
     if not data:
         return False
         
-    inv_uuids = [item["_additional"]["id"] for item in data.get("Get", {}).get("Invoice", [])]
+    inv_items = data.get("Get", {}).get("Invoice", [])
     
-    # 2. Xóa Chunk Cha
-    for uid in inv_uuids:
+    # 2. Xóa Chunk Cha và xóa file ảnh vật lý nếu có
+    for item in inv_items:
+        uid = item["_additional"]["id"]
         client.data_object.delete(uid, class_name="Invoice")
         success = True
+        if delete_file:
+            img_rel = item.get("image_path")
+            if img_rel:
+                img_abs = os.path.join(BASE_DIR, img_rel)
+                if os.path.exists(img_abs):
+                    try:
+                        os.remove(img_abs)
+                    except Exception:
+                        pass
         
     # 3. Tìm UUID của các Chunk Con liên kết
     item_result = client.query.get("InvoiceItem", ["_additional { id }"]).with_where(
@@ -447,7 +451,7 @@ def delete_invoice_completely(invoice_id: str, user_id: int = 0):
     return success
 from datetime import datetime, timezone
 
-def soft_delete_invoice(invoice_id: str, user_id: int = 0):
+def soft_delete_invoice(invoice_id: str, user_id: int = 0, delete_reason: str = ""):
     inv_result = client.query.get("Invoice", ["_additional { id }"]).with_where(
         {"operator": "And", "operands": [
             {"path": ["invoice_id"], "operator": "Equal", "valueString": invoice_id},
@@ -465,7 +469,8 @@ def soft_delete_invoice(invoice_id: str, user_id: int = 0):
     for uid in inv_uuids:
         client.data_object.update(uuid=uid, class_name="Invoice", data_object={
                 "is_deleted": True,
-                "deleted_at": now_iso
+                "deleted_at": now_iso,
+                "delete_reason": delete_reason or "Không rõ lý do"
             }
         )
     return True
@@ -486,6 +491,7 @@ def restore_invoice(invoice_id: str, user_id: int = 0):
     for uid in inv_uuids:
         client.data_object.update(uuid=uid, class_name="Invoice", data_object={
                 "is_deleted": False,
+                "delete_reason": ""
             }
         )
     return True
@@ -495,7 +501,7 @@ def get_trash_invoices(user_id: int = 0):
         {"path": ["user_id"], "operator": "Equal", "valueNumber": user_id},
         {"path": ["is_deleted"], "operator": "Equal", "valueBoolean": True}
     ]
-    query = client.query.get("Invoice", ["invoice_id", "store_name", "date", "total_amount", "deleted_at", "image_path", "_additional { id }"])
+    query = client.query.get("Invoice", ["invoice_id", "store_name", "date", "invoice_type", "total_amount", "deleted_at", "delete_reason", "image_path", "_additional { id }"])
     query = query.with_where({"operator": "And", "operands": where_operands})
     
     try:
@@ -529,7 +535,7 @@ def get_trash_invoices(user_id: int = 0):
                 
         return valid_invoices
     except Exception as e:
-        print("[*] Log message removed due to unicode")
+        print(f"[!] Lỗi khi lấy danh sách thùng rác: {e}")
         return []
 
 

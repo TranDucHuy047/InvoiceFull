@@ -31,7 +31,7 @@ export default function Dashboard() {
       .then(res => {
         if(res.data.status === 200) {
           const users = res.data.data;
-          setRecentUsers(users.slice(-4).reverse()); // Get 4 most recent
+          setRecentUsers(users.slice(0, 4)); // Get 4 most recent (already sorted DESC by backend)
         }
       })
       .catch(err => console.error(err));

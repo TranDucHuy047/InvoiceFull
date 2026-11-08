@@ -1,9 +1,10 @@
 import axios from 'axios';
 
 const host = window.location.hostname || 'localhost';
+const apiHost = host === 'localhost' ? '127.0.0.1' : host;
 
 const axiosClient = axios.create({
-    baseURL: `http://${host}:8000/api`,
+    baseURL: `http://${apiHost}:8000/api`,
     headers: {
     },
 });

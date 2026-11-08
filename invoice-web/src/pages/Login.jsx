@@ -32,12 +32,13 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const { user, token, loginUser, logoutUser } = useAuth();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // If redirected from admin logout, clear session
+  // If redirected from admin logout, clear session and remove ?logout=true from URL
   useEffect(() => {
     if (searchParams.get('logout') === 'true') {
       logoutUser();
+      setSearchParams({}, { replace: true });
       return;
     }
     if (token && user) {
@@ -47,7 +48,7 @@ export default function Login() {
         navigate('/');
       }
     }
-  }, [token, user, searchParams, logoutUser, navigate]);
+  }, [token, user, searchParams, setSearchParams, logoutUser, navigate]);
 
   // Countdown timer for resend OTP
   useEffect(() => {
@@ -156,7 +157,7 @@ export default function Login() {
     setError('');
     setSuccess('');
     try {
-      const res = await login(formData.username, formData.password);
+      const res = await login(formData.username.trim(), formData.password);
       const accessToken = res.data.access_token || res.data.token;
       const userData = res.data.user || res.data.data;
       const role = res.data.role || userData?.role;
@@ -170,6 +171,10 @@ export default function Login() {
 
       navigate('/');
     } catch (err) {
+      if (!err.response) {
+        setError('Không thể kết nối tới máy chủ Backend (cổng 8000). Vui lòng kiểm tra lại server.');
+        return;
+      }
       let errMsg = err.response?.data?.detail;
       if (Array.isArray(errMsg)) errMsg = errMsg[0].msg || 'Lỗi xác thực dữ liệu';
       else if (typeof errMsg === 'object') errMsg = JSON.stringify(errMsg);

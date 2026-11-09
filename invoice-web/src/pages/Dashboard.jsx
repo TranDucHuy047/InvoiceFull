@@ -319,6 +319,19 @@ export default function Dashboard() {
     year: 'Tổng chi tiêu năm',
   };
 
+  const toISODateInput = (d) => {
+    const yr = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    const da = String(d.getDate()).padStart(2, '0');
+    return `${yr}-${mo}-${da}`;
+  };
+
+  const toISOMonthInput = (d) => {
+    const yr = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    return `${yr}-${mo}`;
+  };
+
   return (
     <div className="dashboard-page">
       {/* Header Greeting & Period Filter */}
@@ -327,7 +340,6 @@ export default function Dashboard() {
           <h2 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span>Xin chào, {user?.full_name || user?.username}</span>
           </h2>
-          <p>Theo dõi chỉ số chi tiêu, chứng từ và lịch sử hóa đơn theo thời gian thực.</p>
         </div>
 
         <div className="period-tabs">
@@ -348,15 +360,59 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Thanh điều hướng kỳ theo Ngày trên Hóa đơn */}
+      {/* Thanh điều hướng kỳ theo Ngày trên Hóa đơn (tích hợp Lịch Calendar chọn trực tiếp) */}
       <div className="period-nav">
         <button className="period-nav-btn" onClick={() => shiftPeriod(-1)} title="Kỳ trước">
           <ChevronLeft size={16} strokeWidth={1.75} />
         </button>
-        <div className="period-nav-label">
-          <Calendar size={14} strokeWidth={1.75} style={{ marginRight: '6px', verticalAlign: '-2px' }} />
-          {periodInfo.label}
+
+        <div className="period-nav-label" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+          <Calendar size={14} strokeWidth={1.75} style={{ color: 'var(--primary)' }} />
+          <span>{periodInfo.label}</span>
         </div>
+
+        {/* Bộ chọn Lịch (Calendar Picker) trực tiếp theo kỳ */}
+        <div className="period-calendar-picker-wrap" title="Chọn mốc thời gian từ lịch">
+          {period === 'month' ? (
+            <input
+              type="month"
+              className="period-calendar-input"
+              value={toISOMonthInput(anchorDate)}
+              onChange={(e) => {
+                if (!e.target.value) return;
+                const [y, m] = e.target.value.split('-').map(Number);
+                if (y && m) setAnchorDate(new Date(y, m - 1, 1));
+              }}
+            />
+          ) : period === 'year' ? (
+            <select
+              className="period-calendar-input"
+              value={anchorDate.getFullYear()}
+              onChange={(e) => {
+                const y = Number(e.target.value);
+                if (y) setAnchorDate(new Date(y, anchorDate.getMonth(), 1));
+              }}
+            >
+              {Array.from({ length: 15 }, (_, idx) => new Date().getFullYear() + 1 - idx).map((yr) => (
+                <option key={yr} value={yr}>
+                  Năm {yr}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="date"
+              className="period-calendar-input"
+              value={toISODateInput(anchorDate)}
+              onChange={(e) => {
+                if (!e.target.value) return;
+                const [y, m, d] = e.target.value.split('-').map(Number);
+                if (y && m && d) setAnchorDate(new Date(y, m - 1, d));
+              }}
+            />
+          )}
+        </div>
+
         <button className="period-nav-btn" onClick={() => shiftPeriod(1)} title="Kỳ tiếp">
           <ChevronRight size={16} strokeWidth={1.75} />
         </button>
@@ -572,11 +628,6 @@ export default function Dashboard() {
           ))
         )}
       </div>
-
-      {/* Floating AI Button */}
-      <button className="ai-fab" onClick={() => navigate('/ai-chat')} title="Trợ lý AI">
-        <Sparkles size={22} strokeWidth={1.75} />
-      </button>
     </div>
   );
 }

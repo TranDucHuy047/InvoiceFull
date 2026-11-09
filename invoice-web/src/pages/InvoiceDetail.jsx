@@ -215,6 +215,7 @@ export default function InvoiceDetail() {
                 <thead>
                   <tr>
                     <th>{t('col_name')}</th>
+                    <th style={{ textAlign: 'center' }}>{t('col_unit') || 'Đơn vị'}</th>
                     <th style={{ textAlign: 'center' }}>{t('col_quantity')}</th>
                     <th style={{ textAlign: 'right' }}>{t('col_unit_price')}</th>
                     <th style={{ textAlign: 'right' }}>{t('col_total')}</th>
@@ -224,6 +225,9 @@ export default function InvoiceDetail() {
                   {items.map((item, idx) => (
                     <tr key={idx}>
                       <td>{item.item_name || item.name}</td>
+                      <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                        {item.unit || '—'}
+                      </td>
                       <td style={{ textAlign: 'center' }}>{item.quantity}</td>
                       <td style={{ textAlign: 'right' }}>{formatCurrency(item.unit_price)}</td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>

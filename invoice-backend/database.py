@@ -71,6 +71,13 @@ def setup_database():
         except Exception:
             pass
 
+    if client.schema.exists("InvoiceItem"):
+        try:
+            client.schema.property.create("InvoiceItem", {"name": "unit", "dataType": ["text"]})
+            print("[*] Added unit property to InvoiceItem")
+        except Exception:
+            pass
+
     if client.schema.exists("Invoice") and client.schema.exists("InvoiceItem"):
         print("[*] Weaviate Schema đã tồn tại và sẵn sàng.")
         return
@@ -82,6 +89,7 @@ def setup_database():
             "description": "Dữ liệu chi tiết từng món hàng (Chunk con)",
             "properties": [
                 {"name": "item_name", "dataType": ["text"]},
+                {"name": "unit", "dataType": ["text"]},
                 {"name": "quantity", "dataType": ["number"]},
                 {"name": "unit_price", "dataType": ["number"]},
                 {"name": "total_price", "dataType": ["number"]},
@@ -125,53 +133,60 @@ def setup_database():
 
 def save_invoice(invoice_data, user_id: int = 0, is_submitted: bool = False):
     """Thuật toán Hierarchical Chunking: Lưu và liên kết vector"""
-    
-    # Bước 1: Lưu thông tin Cha (Invoice)
-    invoice_uuid = client.data_object.create(
-        data_object={
-            "invoice_id": invoice_data.invoice_id,
-            "store_name": invoice_data.store_name,
-            "store_address": getattr(invoice_data, "store_address", "") or "",
-            "date": invoice_data.date,
-            "invoice_type": getattr(invoice_data, "invoice_type", "Other") or "Other",
-            "total_amount": float(invoice_data.total_amount),
-            "tax_amount": float(getattr(invoice_data, "tax_amount", 0.0) or 0.0),
-            "raw_text": invoice_data.raw_text,
-            "image_path": getattr(invoice_data, "image_path", "") or "",
-            "user_id": user_id,
-            "is_deleted": False,
-            "delete_reason": getattr(invoice_data, "delete_reason", "") or "",
-            "is_submitted": bool(is_submitted or getattr(invoice_data, "is_submitted", False))
-        },
-        class_name="Invoice"
-    )
+    inv_obj = {
+        "invoice_id": invoice_data.invoice_id,
+        "store_name": invoice_data.store_name,
+        "store_address": getattr(invoice_data, "store_address", "") or "",
+        "date": invoice_data.date,
+        "invoice_type": getattr(invoice_data, "invoice_type", "Other") or "Other",
+        "total_amount": float(round(float(invoice_data.total_amount or 0.0))),
+        "tax_amount": float(round(float(getattr(invoice_data, "tax_amount", 0.0) or 0.0))),
+        "raw_text": invoice_data.raw_text,
+        "image_path": getattr(invoice_data, "image_path", "") or "",
+        "user_id": int(user_id),
+        "is_deleted": False,
+        "delete_reason": getattr(invoice_data, "delete_reason", "") or "",
+        "is_submitted": bool(is_submitted or getattr(invoice_data, "is_submitted", False))
+    }
 
-# Bước 2 & 3: Băm nhỏ từng món hàng (Chunking) và tạo Liên kết (Cross-Reference)
+    # Bước 1: Lưu thông tin Cha (Invoice) (Tự động đồng bộ schema nếu Weaviate vừa khởi động lại)
+    try:
+        invoice_uuid = client.data_object.create(data_object=inv_obj, class_name="Invoice")
+    except Exception:
+        setup_database()
+        invoice_uuid = client.data_object.create(data_object=inv_obj, class_name="Invoice")
+
+    # Bước 2 & 3: Băm nhỏ từng món hàng (Chunking) và tạo Liên kết (Cross-Reference)
     saved_chunks = 0
     if invoice_data.items:
         for item in invoice_data.items:
             if isinstance(item, dict):
-                i_name = str(item.get("item_name", "") or "")
-                i_qty = int(item.get("quantity", 1) or 1)
-                i_unit = float(item.get("unit_price", 0.0) or 0.0)
-                i_total = float(item.get("total_price", 0.0) or 0.0)
+                i_name = str(item.get("item_name", "") or item.get("name", "") or "")
+                i_unit_label = str(item.get("unit", "") or "")
+                i_qty = int(float(item.get("quantity", 1) or 1))
+                i_unit = float(round(float(item.get("unit_price", 0.0) or 0.0)))
+                i_total = float(round(float(item.get("total_price", 0.0) or 0.0)))
             else:
-                i_name = str(getattr(item, "item_name", "") or "")
-                i_qty = int(getattr(item, "quantity", 1) or 1)
-                i_unit = float(getattr(item, "unit_price", 0.0) or 0.0)
-                i_total = float(getattr(item, "total_price", 0.0) or 0.0)
+                i_name = str(getattr(item, "item_name", "") or getattr(item, "name", "") or "")
+                i_unit_label = str(getattr(item, "unit", "") or "")
+                i_qty = int(float(getattr(item, "quantity", 1) or 1))
+                i_unit = float(round(float(getattr(item, "unit_price", 0.0) or 0.0)))
+                i_total = float(round(float(getattr(item, "total_price", 0.0) or 0.0)))
 
-            item_uuid = client.data_object.create(
-                data_object={
-                    "item_name": i_name,
-                    "quantity": i_qty,
-                    "unit_price": i_unit,
-                    "total_price": i_total,
-                    "invoice_id_ref": invoice_data.invoice_id,
-                    "user_id": user_id
-                },
-                class_name="InvoiceItem"
-            )
+            item_obj = {
+                "item_name": i_name,
+                "unit": i_unit_label,
+                "quantity": i_qty,
+                "unit_price": i_unit,
+                "total_price": i_total,
+                "invoice_id_ref": invoice_data.invoice_id,
+                "user_id": int(user_id)
+            }
+            try:
+                item_uuid = client.data_object.create(data_object=item_obj, class_name="InvoiceItem")
+            except Exception:
+                setup_database()
+                item_uuid = client.data_object.create(data_object=item_obj, class_name="InvoiceItem")
             
             # Trỏ mũi tên liên kết từ Cha xuống Con
             client.data_object.reference.add(
@@ -221,8 +236,14 @@ def get_invoice_by_id(invoice_id: str, user_id: int = 0):
         }
 
     result = client.query.get(
-        "Invoice", ["invoice_id", "store_name", "store_address", "date", "invoice_type", "total_amount", "tax_amount", "raw_text", "user_id", "is_deleted", "delete_reason", "image_path", "is_submitted", "hasItems {... on InvoiceItem { item_name quantity unit_price total_price }}"]
+        "Invoice", ["invoice_id", "store_name", "store_address", "date", "invoice_type", "total_amount", "tax_amount", "raw_text", "user_id", "is_deleted", "delete_reason", "image_path", "is_submitted", "hasItems {... on InvoiceItem { item_name unit quantity unit_price total_price }}"]
     ).with_where(where_cond).do()
+
+    if result and result.get("errors"):
+        setup_database()
+        result = client.query.get(
+            "Invoice", ["invoice_id", "store_name", "store_address", "date", "invoice_type", "total_amount", "tax_amount", "raw_text", "user_id", "is_deleted", "delete_reason", "image_path", "is_submitted", "hasItems {... on InvoiceItem { item_name unit quantity unit_price total_price }}"]
+        ).with_where(where_cond).do()
     
     try:
         items = result["data"]["Get"]["Invoice"]

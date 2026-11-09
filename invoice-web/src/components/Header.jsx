@@ -63,10 +63,11 @@ export default function Header() {
   const handleQuickSearch = (e) => {
     e.preventDefault();
     const trimmed = quickQuery.trim();
+    const targetBase = location.pathname.startsWith('/trash') ? '/trash' : '/history';
     if (trimmed) {
-      navigate(`/history?q=${encodeURIComponent(trimmed)}`);
+      navigate(`${targetBase}?q=${encodeURIComponent(trimmed)}`);
     } else {
-      navigate('/history');
+      navigate(targetBase);
     }
   };
 
@@ -186,6 +187,7 @@ export default function Header() {
   };
 
   const clearAllNotifications = () => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa tất cả thông báo?')) return;
     markAllAsRead();
     setNotifications([]);
     setUnreadCount(0);
@@ -242,7 +244,11 @@ export default function Header() {
           <Search size={16} strokeWidth={1.75} className="header-search-icon" />
           <input
             type="text"
-            placeholder="Tìm nhanh cửa hàng, mã HĐ..."
+            placeholder={
+              location.pathname.startsWith('/trash')
+                ? 'Tìm nhanh trong lịch sử xóa...'
+                : 'Tìm nhanh cửa hàng, mã HĐ...'
+            }
             value={quickQuery}
             onChange={(e) => setQuickQuery(e.target.value)}
           />

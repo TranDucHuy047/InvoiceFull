@@ -3,6 +3,7 @@ from typing import List, Optional
 
 class InvoiceItem(BaseModel):
     item_name: str
+    unit: Optional[str] = ""
     quantity: int
     unit_price: float
     total_price: float

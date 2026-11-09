@@ -13,9 +13,11 @@ import {
   Settings,
   Flag,
   LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 
-export default function Sidebar() {
+export default function Sidebar({ collapsed = false, onToggle }) {
   const { user, logout } = useAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -26,46 +28,87 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="sidebar">
-      <div className="sidebar-logo" onClick={() => navigate('/')}>
-        <div className="sidebar-logo-icon">
-          <Receipt size={20} strokeWidth={1.75} />
+    <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+      <div className="sidebar-logo">
+        <div
+          className="sidebar-logo-brand"
+          onClick={() => navigate('/')}
+          style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', minWidth: 0 }}
+        >
+          <div className="sidebar-logo-icon">
+            <Receipt size={20} strokeWidth={1.75} />
+          </div>
+          {!collapsed && <span>Invoice AI</span>}
         </div>
-        <span>Invoice AI</span>
+
+        <button
+          type="button"
+          className="sidebar-collapse-btn"
+          onClick={onToggle}
+          title={collapsed ? 'Mở rộng menu' : 'Thu gọn menu'}
+        >
+          {collapsed ? (
+            <PanelLeftOpen size={18} strokeWidth={1.75} />
+          ) : (
+            <PanelLeftClose size={18} strokeWidth={1.75} />
+          )}
+        </button>
       </div>
 
       <nav className="sidebar-nav" style={{ paddingTop: '16px' }}>
-        <div className="sidebar-nav-group-label">QUẢN LÝ CHỨNG TỪ</div>
-        <NavLink to="/" end className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        {!collapsed && <div className="sidebar-nav-group-label">QUẢN LÝ CHỨNG TỪ</div>}
+        <NavLink
+          to="/"
+          end
+          title={t('overview')}
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+        >
           <span className="nav-icon"><LayoutDashboard size={19} strokeWidth={1.75} /></span>
-          {t('overview')}
+          {!collapsed && <span className="nav-text">{t('overview')}</span>}
         </NavLink>
 
-        <NavLink to="/scan" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink
+          to="/scan"
+          title={t('scan')}
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+        >
           <span className="nav-icon"><ScanLine size={19} strokeWidth={1.75} /></span>
-          {t('scan')}
+          {!collapsed && <span className="nav-text">{t('scan')}</span>}
         </NavLink>
 
-        <NavLink to="/history" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink
+          to="/history"
+          title={t('history')}
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+        >
           <span className="nav-icon"><FileClock size={19} strokeWidth={1.75} /></span>
-          {t('history')}
+          {!collapsed && <span className="nav-text">{t('history')}</span>}
         </NavLink>
 
-        <NavLink to="/trash" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink
+          to="/trash"
+          title={t('trash')}
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+        >
           <span className="nav-icon"><Trash2 size={19} strokeWidth={1.75} /></span>
-          {t('trash')}
+          {!collapsed && <span className="nav-text">{t('trash')}</span>}
         </NavLink>
 
-        <NavLink to="/ai-chat" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink
+          to="/ai-chat"
+          title={t('ai_chat')}
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+        >
           <span className="nav-icon"><Sparkles size={19} strokeWidth={1.75} /></span>
-          {t('ai_chat')}
+          {!collapsed && <span className="nav-text">{t('ai_chat')}</span>}
         </NavLink>
 
         {user?.role === 'admin' && (
           <a
-            href={`http://${window.location.hostname}:5174`}
+            href={`http://${window.location.hostname || 'localhost'}:5174`}
             target="_blank"
             rel="noopener noreferrer"
+            title={t('admin_portal')}
             className="nav-item"
             style={{
               background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.12))',
@@ -77,35 +120,47 @@ export default function Sidebar() {
             }}
           >
             <span className="nav-icon"><ShieldCheck size={19} strokeWidth={1.75} /></span>
-            {t('admin_portal')}
+            {!collapsed && <span className="nav-text">{t('admin_portal')}</span>}
           </a>
         )}
 
         <div className="sidebar-nav-divider" />
-        <div className="sidebar-nav-group-label">TÀI KHOẢN & HỆ THỐNG</div>
+        {!collapsed && <div className="sidebar-nav-group-label">TÀI KHOẢN & HỆ THỐNG</div>}
 
-        <NavLink to="/profile" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink
+          to="/profile"
+          title={t('profile')}
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+        >
           <span className="nav-icon"><User size={19} strokeWidth={1.75} /></span>
-          {t('profile')}
+          {!collapsed && <span className="nav-text">{t('profile')}</span>}
         </NavLink>
 
-        <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink
+          to="/settings"
+          title={t('settings')}
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+        >
           <span className="nav-icon"><Settings size={19} strokeWidth={1.75} /></span>
-          {t('settings')}
+          {!collapsed && <span className="nav-text">{t('settings')}</span>}
         </NavLink>
 
-        <NavLink to="/report" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <NavLink
+          to="/report"
+          title={t('report')}
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+        >
           <span className="nav-icon"><Flag size={19} strokeWidth={1.75} /></span>
-          {t('report')}
+          {!collapsed && <span className="nav-text">{t('report')}</span>}
         </NavLink>
       </nav>
 
       <div className="sidebar-footer">
-        <button className="sidebar-logout" onClick={handleLogout}>
+        <button className="sidebar-logout" onClick={handleLogout} title={t('logout')}>
           <LogOut size={18} strokeWidth={1.75} />
-          <span>{t('logout')}</span>
+          {!collapsed && <span>{t('logout')}</span>}
         </button>
-        <div className="sidebar-brand-text">{t('brand_version')}</div>
+        {!collapsed && <div className="sidebar-brand-text">{t('brand_version')}</div>}
       </div>
     </aside>
   );

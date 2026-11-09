@@ -46,6 +46,7 @@ export default function Settings() {
   // Modals & Toast
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showClearCacheConfirm, setShowClearCacheConfirm] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
 
   // Change password state
@@ -93,6 +94,7 @@ export default function Settings() {
 
   const handleClearCache = () => {
     sessionStorage.clear();
+    setShowClearCacheConfirm(false);
     showToast(t('toast_cache_cleared'));
   };
 
@@ -154,7 +156,6 @@ export default function Settings() {
       <div className="stg-header">
         <div>
           <h2>{t('settings_title')}</h2>
-          <p className="stg-header-sub">{t('settings_subtitle')}</p>
         </div>
       </div>
 
@@ -313,22 +314,7 @@ export default function Settings() {
           {t('section_system')}
         </div>
 
-        <div className="stg-card">
-          <div className="stg-card-info">
-            <div className="stg-card-icon-wrap stg-icon-indigo">
-              <Bot size={20} strokeWidth={1.75} />
-            </div>
-            <div>
-              <h4>{t('system_info_title')}</h4>
-              <p>{t('system_info_desc')}</p>
-            </div>
-          </div>
-          <span className="stg-status-badge">
-            <span className="stg-dot-pulse" /> Online
-          </span>
-        </div>
-
-        <div className="stg-card stg-card-action" onClick={handleClearCache}>
+        <div className="stg-card stg-card-action" onClick={() => setShowClearCacheConfirm(true)}>
           <div className="stg-card-info">
             <div className="stg-card-icon-wrap stg-icon-indigo">
               <HardDrive size={20} strokeWidth={1.75} />
@@ -343,7 +329,7 @@ export default function Settings() {
             className="stg-btn-sm"
             onClick={(e) => {
               e.stopPropagation();
-              handleClearCache();
+              setShowClearCacheConfirm(true);
             }}
           >
             {t('clear_cache_btn')}
@@ -501,6 +487,40 @@ export default function Settings() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CLEAR CACHE CONFIRMATION */}
+      {showClearCacheConfirm && (
+        <div
+          className="stg-overlay"
+          onClick={() => setShowClearCacheConfirm(false)}
+        >
+          <div
+            className="stg-modal stg-modal-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="stg-modal-icon stg-modal-icon-danger" style={{ color: 'var(--danger)' }}>
+              <AlertTriangle size={30} strokeWidth={1.75} />
+            </div>
+            <h3>{t('clear_cache_title')}</h3>
+            <p className="stg-modal-sub">
+              {lang === 'en'
+                ? 'Are you sure you want to clear temporary browser cache?'
+                : 'Bạn có chắc chắn muốn xóa bộ nhớ đệm tạm thời trên trình duyệt không?'}
+            </p>
+            <div className="stg-modal-btns" style={{ justifyContent: 'center' }}>
+              <button
+                className="stg-btn-ghost"
+                onClick={() => setShowClearCacheConfirm(false)}
+              >
+                {t('cancel')}
+              </button>
+              <button className="stg-btn-danger" onClick={handleClearCache}>
+                {lang === 'en' ? 'Confirm Delete' : 'Chắc chắn muốn xóa'}
+              </button>
+            </div>
           </div>
         </div>
       )}

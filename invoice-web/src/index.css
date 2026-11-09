@@ -6218,3 +6218,317 @@ a.header-bc-section:hover {
   padding: 4px 10px;
   border-radius: 999px;
 }
+
+/* ==========================================================================
+   13. FEEDBACK UPGRADES: COLLAPSIBLE SIDEBAR, TOP-CENTER TOASTS, CALENDAR,
+       COMPACT SCAN IMAGE, EXPORT BADGE & CLEAN MODAL BACKDROP
+   ========================================================================== */
+
+/* --- 13.1 COLLAPSIBLE SIDEBAR --- */
+.sidebar {
+  transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1), padding 0.25s ease;
+}
+
+.main-content {
+  transition: margin-left 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sidebar-collapse-btn {
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-main);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.sidebar-collapse-btn:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: var(--primary-bg);
+}
+
+.sidebar.collapsed {
+  width: 76px !important;
+  padding: 18px 10px !important;
+}
+
+.sidebar.collapsed .sidebar-logo {
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  padding: 0 0 16px 0 !important;
+}
+
+.sidebar.collapsed .sidebar-collapse-btn {
+  margin-left: 0;
+}
+
+.sidebar.collapsed .nav-item {
+  justify-content: center !important;
+  padding: 12px 0 !important;
+}
+
+.sidebar.collapsed .nav-item .nav-icon {
+  margin: 0 !important;
+}
+
+.sidebar.collapsed .sidebar-footer {
+  display: flex;
+  justify-content: center;
+  padding-top: 12px;
+}
+
+.sidebar.collapsed .sidebar-logout {
+  justify-content: center !important;
+  padding: 10px !important;
+  width: 44px;
+  height: 44px;
+}
+
+.app-layout.is-sidebar-collapsed .main-content {
+  margin-left: 76px !important;
+}
+
+@media (max-width: 768px) {
+  .app-layout.is-sidebar-collapsed .main-content {
+    margin-left: 0 !important;
+  }
+}
+
+/* --- 13.2 UNIFIED TOP-CENTER SLIDE-DOWN TOAST NOTIFICATIONS --- */
+@keyframes topToastSlideDown {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -22px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.toast,
+.stg-toast,
+.trash-toast,
+.inv-toast,
+.chat-toast {
+  position: fixed !important;
+  top: 24px !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: translateX(-50%) !important;
+  z-index: 10050 !important;
+  animation: topToastSlideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.18) !important;
+}
+
+/* --- 13.3 MODAL BACKDROP WITHOUT BLUR --- */
+.modal-overlay,
+.stg-overlay {
+  background: rgba(15, 23, 42, 0.45) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+[data-theme="dark"] .modal-overlay,
+[data-theme="dark"] .stg-overlay {
+  background: rgba(2, 6, 23, 0.65) !important;
+}
+
+/* --- 13.4 DASHBOARD CALENDAR INPUT & FIXED AI FAB --- */
+.period-calendar-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.period-calendar-input,
+.period-year-select {
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.period-calendar-input:hover,
+.period-year-select:hover,
+.period-calendar-input:focus,
+.period-year-select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-bg);
+}
+
+.ai-fab {
+  position: fixed !important;
+  bottom: 28px !important;
+  right: 28px !important;
+  width: auto !important;
+  height: 48px !important;
+  padding: 0 20px !important;
+  border-radius: 999px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  z-index: 995 !important;
+  box-shadow: 0 10px 28px rgba(99, 102, 241, 0.42) !important;
+}
+
+/* --- 13.5 SCAN REVIEW: SMALLER IMAGE COLUMN & LARGER FORM COLUMN --- */
+.scan-review-wrap {
+  max-width: 1280px !important;
+}
+
+.scan-review-grid {
+  grid-template-columns: 270px 1fr !important;
+  gap: 22px !important;
+  align-items: start !important;
+}
+
+@media (max-width: 960px) {
+  .scan-review-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.scan-review-img-card {
+  padding: 14px !important;
+}
+
+.scan-review-img-box {
+  max-height: 290px !important;
+  padding: 8px !important;
+}
+
+.scan-review-img-box img {
+  max-height: 265px !important;
+  width: auto !important;
+  object-fit: contain !important;
+}
+
+.scan-multi-switcher {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--primary-bg);
+  border: 1px solid rgba(99, 102, 241, 0.28);
+  border-radius: 12px;
+  padding: 10px 16px;
+  margin-bottom: 18px;
+}
+
+.scan-multi-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.scan-multi-tab {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.scan-multi-tab.active {
+  background: var(--primary);
+  color: #ffffff;
+  border-color: var(--primary);
+}
+
+/* --- 13.6 HISTORY EXPORT FLOATING BADGE & SELECTION CHECKBOXES --- */
+.inv-export-btn-wrap {
+  position: relative;
+  overflow: visible !important;
+}
+
+.inv-export-floating-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 8px rgba(99, 102, 241, 0.45);
+  border: 2px solid var(--bg-card);
+  line-height: 1;
+  pointer-events: none;
+}
+
+.inv-select-all-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 13px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+
+.inv-select-all-chip:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.inv-select-all-chip input[type="checkbox"],
+.inv-card-select-check input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+.inv-card-select-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 4px;
+}
+
+.inv-card.is-export-selected {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 2px var(--primary-bg) !important;
+}
+

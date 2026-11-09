@@ -24,13 +24,14 @@ export default function Profile() {
   const navigate = useNavigate();
 
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [fullName, setFullName] = useState(user?.full_name || '');
   const [email, setEmail] = useState(user?.email || '');
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
 
-  // Inline Change Password State
+  // Change Password Modal State
   const [currentPw, setCurrentPw] = useState('');
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
@@ -134,9 +135,6 @@ export default function Profile() {
 
       <div style={{ marginBottom: '24px' }}>
         <h2 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '4px' }}>Hồ sơ tài khoản</h2>
-        <p style={{ fontSize: '14px', color: 'var(--text-muted)' }}>
-          Quản lý thông tin định danh cá nhân, bảo mật mật khẩu và quyền riêng tư tài khoản
-        </p>
       </div>
 
       {/* Balanced 2-Column Layout */}
@@ -155,9 +153,9 @@ export default function Profile() {
             <div className="profile-info">
               <h3>{user?.full_name || user?.username}</h3>
               <p>@{user?.username}</p>
-              <span className="profile-role-badge">
-                {user?.role === 'admin' ? 'Quản trị viên' : 'Tài khoản tiêu chuẩn'}
-              </span>
+              {user?.role === 'admin' && (
+                <span className="profile-role-badge">Quản trị viên</span>
+              )}
             </div>
           </div>
 
@@ -203,22 +201,85 @@ export default function Profile() {
 
         {/* RIGHT COLUMN: Security & Password + Danger Zone */}
         <div className="profile-right-stack">
-          {/* Security & Change Password Card */}
+          {/* Security & Change Password Card (Button opens Modal) */}
           <div className="profile-card" style={{ maxWidth: 'none' }}>
             <div className="profile-card-section-head">
               <Lock size={18} strokeWidth={1.75} style={{ color: 'var(--primary)' }} />
-              <h4>Bảo mật &amp; Đổi mật khẩu</h4>
+              <h4>Bảo mật &amp; Mật khẩu</h4>
             </div>
-            <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '18px' }}>
-              Sử dụng mật khẩu mạnh tối thiểu 6 ký tự để bảo vệ dữ liệu hóa đơn của bạn.
+            <p style={{ fontSize: '13.5px', color: 'var(--text-muted)', marginBottom: '20px', lineHeight: 1.6 }}>
+              Sử dụng mật khẩu mạnh tối thiểu 6 ký tự và thay đổi định kỳ để bảo vệ dữ liệu hóa đơn của bạn.
             </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ width: 'auto', padding: '10px 22px' }}
+                onClick={() => {
+                  setPwMessage(null);
+                  setCurrentPw('');
+                  setNewPw('');
+                  setConfirmPw('');
+                  setShowPasswordModal(true);
+                }}
+              >
+                <KeyRound size={16} strokeWidth={1.75} />
+                Đổi mật khẩu
+              </button>
+            </div>
+          </div>
+
+          {/* Danger Zone Card */}
+          <div className="profile-card profile-danger-card" style={{ maxWidth: 'none' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: '220px' }}>
+                <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--danger)', fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>
+                  <ShieldAlert size={18} strokeWidth={1.75} />
+                  Khu vực nguy hiểm
+                </h4>
+                <p style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                  Xóa vĩnh viễn tài khoản và toàn bộ hóa đơn, lịch sử trò chuyện AI của bạn khỏi hệ thống.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-outline-danger btn-sm"
+                onClick={() => setShowDeleteModal(true)}
+                style={{ alignSelf: 'center' }}
+              >
+                <Trash2 size={15} strokeWidth={1.75} />
+                Xóa tài khoản
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Change Password Modal */}
+      {showPasswordModal && (
+        <div className="modal-overlay" onClick={() => !pwLoading && setShowPasswordModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '460px' }}>
+            <div className="modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <KeyRound size={19} strokeWidth={1.75} style={{ color: 'var(--primary)' }} />
+                Đổi mật khẩu tài khoản
+              </h3>
+              <button
+                type="button"
+                className="modal-close"
+                disabled={pwLoading}
+                onClick={() => setShowPasswordModal(false)}
+              >
+                <X size={16} strokeWidth={1.75} />
+              </button>
+            </div>
 
             {pwMessage && (
               <div
                 className={`stg-alert ${
                   pwMessage.type === 'error' ? 'stg-alert-error' : 'stg-alert-success'
                 }`}
-                style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}
               >
                 {pwMessage.type === 'error' ? (
                   <AlertTriangle size={16} strokeWidth={1.75} />
@@ -249,68 +310,46 @@ export default function Profile() {
                 </button>
               </div>
 
-              <div className="profile-pw-grid">
-                <div>
-                  <label style={{ marginTop: '14px' }}>Mật khẩu mới</label>
-                  <input
-                    type={showPw ? 'text' : 'password'}
-                    placeholder="Tối thiểu 6 ký tự"
-                    value={newPw}
-                    onChange={(e) => setNewPw(e.target.value)}
-                    required
-                  />
-                </div>
-                <div>
-                  <label style={{ marginTop: '14px' }}>Xác nhận mật khẩu mới</label>
-                  <input
-                    type={showPw ? 'text' : 'password'}
-                    placeholder="Nhập lại mật khẩu mới"
-                    value={confirmPw}
-                    onChange={(e) => setConfirmPw(e.target.value)}
-                    required
-                  />
-                </div>
+              <label style={{ marginTop: '14px' }}>Mật khẩu mới</label>
+              <div className="stg-pw-field">
+                <input
+                  type={showPw ? 'text' : 'password'}
+                  placeholder="Tối thiểu 6 ký tự"
+                  value={newPw}
+                  onChange={(e) => setNewPw(e.target.value)}
+                  required
+                />
               </div>
 
-              <div style={{ marginTop: '18px', display: 'flex', justifyContent: 'flex-end' }}>
+              <label style={{ marginTop: '14px' }}>Xác nhận mật khẩu mới</label>
+              <div className="stg-pw-field">
+                <input
+                  type={showPw ? 'text' : 'password'}
+                  placeholder="Nhập lại mật khẩu mới"
+                  value={confirmPw}
+                  onChange={(e) => setConfirmPw(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="modal-actions" style={{ marginTop: '22px' }}>
                 <button
-                  type="submit"
-                  className="btn btn-primary"
-                  style={{ width: 'auto', padding: '10px 22px' }}
+                  type="button"
+                  className="btn btn-outline"
                   disabled={pwLoading}
+                  onClick={() => setShowPasswordModal(false)}
                 >
+                  Hủy
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={pwLoading}>
                   <KeyRound size={16} strokeWidth={1.75} />
                   {pwLoading ? 'Đang cập nhật...' : 'Cập nhật mật khẩu'}
                 </button>
               </div>
             </form>
           </div>
-
-          {/* Danger Zone Card */}
-          <div className="profile-card profile-danger-card" style={{ maxWidth: 'none' }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
-              <div style={{ flex: 1, minWidth: '220px' }}>
-                <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--danger)', fontSize: '15px', fontWeight: 700, marginBottom: '4px' }}>
-                  <ShieldAlert size={18} strokeWidth={1.75} />
-                  Khu vực nguy hiểm
-                </h4>
-                <p style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  Xóa vĩnh viễn tài khoản và toàn bộ hóa đơn, lịch sử trò chuyện AI của bạn khỏi hệ thống.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn btn-outline-danger btn-sm"
-                onClick={() => setShowDeleteModal(true)}
-                style={{ alignSelf: 'center' }}
-              >
-                <Trash2 size={15} strokeWidth={1.75} />
-                Xóa tài khoản
-              </button>
-            </div>
-          </div>
         </div>
-      </div>
+      )}
 
       {/* Edit Profile Modal */}
       {showEditModal && (

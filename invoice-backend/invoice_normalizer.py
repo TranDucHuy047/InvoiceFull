@@ -28,20 +28,23 @@ QUY TẮC TRÍCH XUẤT BẮT BUỘC (ÁP DỤNG TỔNG QUÁT CHO MỌI HÓA Đ�
    - Đối chiếu kỹ với tổng thành tiền của các dòng hàng và dòng "TỔNG CỘNG" / "THÀNH TIỀN" / "TỔNG THANH TOÁN" trên ảnh để tránh nhầm lẫn do nếp gấp giấy (như nhầm số 6 thành số 8).
 6. tax_amount: Tổng tiền thuế GTGT / VAT ghi trên hóa đơn (kiểu số thực float). Nếu hóa đơn có bảng kê thuế GTGT thì lấy đúng số tiền thuế GTGT; nếu không ghi tách biệt thì để 0.0.
 7. items: Danh sách tất cả các dòng hàng hóa/dịch vụ xuất hiện trên hóa đơn theo cấu trúc:
-   [{{"item_name": "Tên sản phẩm", "quantity": 1, "unit_price": 0.0, "total_price": 0.0}}]
+   [{{"item_name": "Tên sản phẩm", "unit": "Đơn vị tính (Chai, Lon, Ly, Cái, Hộp, Kg, Gói, Phần... hoặc \"\" nếu không rõ)", "quantity": 1, "unit_price": 0.0, "total_price": 0.0}}]
    - QUY TẮC SỐ LƯỢNG (QUANTITY) VÀ CỘT MÃ THUẾ / STT:
      + Trên nhiều hóa đơn siêu thị/nhà hàng, cột ngoài cùng bên trái là cột "VAT" (mã nhóm thuế, ví dụ số 2) hoặc "STT". TUYỆT ĐỐI KHÔNG nhầm cột mã VAT hoặc STT ở đầu dòng thành số lượng (quantity) của sản phẩm!
      + Số lượng mặc định của mỗi dòng hàng là 1, trừ khi có cột số lượng rõ ràng hoặc ngay bên dưới tên sản phẩm có dòng nhân số lượng x đơn giá (ví dụ: "2 x 6.400d" -> quantity=2, unit_price=6400.0, total_price=12800.0).
      + Kiểm tra toán học cho từng dòng: quantity * unit_price phải bằng total_price.
+   - QUY TẮC ĐƠN VỊ TÍNH (UNIT):
+     + Nếu trên dòng hàng có ghi đơn vị tính (ví dụ: Chai, Lon, Hộp, Gói, Kg, Cái, Ly, Phần, Túi, Bộ...) thì trích xuất vào trường "unit". Nếu không ghi rõ nhưng tên mặt hàng có chứa đơn vị rõ ràng (như "Chai", "Lon", "Lốc", "Hộp", "Gói", "Ly") thì điền đơn vị tương ứng, ngược lại để "Cái" hoặc "".
    - QUY TẮC GIỮ NGUYÊN DÒNG HÀNG (LINE ITEMS):
      + Giữ nguyên từng dòng hàng theo đúng thứ tự in trên hóa đơn. TUYỆT ĐỐI KHÔNG tự ý gộp các dòng sản phẩm trùng tên lại thành 1 dòng.
 8. raw_text_enriched: Nhìn trực tiếp vào ảnh hóa đơn và chép lại đầy đủ, chính xác toàn bộ nội dung văn bản xuất hiện trên mặt hóa đơn từ trên xuống dưới, bao gồm:
    - Tên đơn vị/công ty, Địa chỉ, Mã số thuế (MST), Số điện thoại bàn (Số ĐT), Số Hotline.
    - Số phiếu (Ticket/Số HĐ), Thu ngân, Quầy, Ngày giờ in.
-   - Toàn bộ danh sách các dòng hàng, số lượng, đơn giá, thành tiền.
+   - Toàn bộ danh sách các dòng hàng, đơn vị tính, số lượng, đơn giá, thành tiền.
    - Tổng cộng, Tổng số lượng mặt hàng, Tiền mặt/Tiền khách đưa, Tiền thối lại.
    - Bảng chi tiết thuế suất GTGT (Thuế suất, Giá bán chưa có GTGT, Thuế GTGT).
    - Ghi chú rõ nếu trên mặt hóa đơn có đóng dấu mộc (màu sắc, hình dáng, nội dung chữ bên trong dấu mộc như "HÀNG ĐÃ XUẤT", "ĐÃ THU TIỀN"...) hoặc chữ ký.
+9. sub_invoices (tùy chọn): Nếu trong CÙNG MỘT BỨC ẢNH người dùng chụp nhiều hơn 1 tờ hóa đơn độc lập (> 1 bill khác nhau), hãy liệt kê toàn bộ các hóa đơn đó vào mảng "sub_invoices" (mỗi phần tử có cùng cấu trúc store_name, store_address, date, invoice_type, total_amount, tax_amount, items, raw_text_enriched). Nếu ảnh chỉ có 1 hóa đơn thì trả về "sub_invoices": [].
 
 Chỉ trả về JSON thuần hợp lệ (không giải thích, không bọc trong markdown):
 {{
@@ -52,9 +55,10 @@ Chỉ trả về JSON thuần hợp lệ (không giải thích, không bọc tro
     "total_amount": 0.0,
     "tax_amount": 0.0,
     "items": [
-        {{"item_name": "Tên món", "quantity": 1, "unit_price": 0.0, "total_price": 0.0}}
+        {{"item_name": "Tên món", "unit": "", "quantity": 1, "unit_price": 0.0, "total_price": 0.0}}
     ],
-    "raw_text_enriched": "Toàn bộ văn bản chi tiết đọc từ ảnh hóa đơn và ghi chú dấu mộc (nếu có)"
+    "raw_text_enriched": "Toàn bộ văn bản chi tiết đọc từ ảnh hóa đơn và ghi chú dấu mộc (nếu có)",
+    "sub_invoices": []
 }}"""
 
 
@@ -161,14 +165,22 @@ def normalize_invoice_extracted_data(parsed_json: dict, raw_text: str) -> dict:
 
         # Khôi phục hoặc đồng bộ unit_price và total_price theo công thức quantity * unit_price == total_price
         if tot > 0 and unit <= 0:
-            unit = round(tot / qty, 2)
+            unit = float(round(tot / qty))
         elif unit > 0 and tot <= 0:
-            tot = round(unit * qty, 2)
+            tot = float(round(unit * qty))
         elif tot > 0 and unit > 0 and abs(qty * unit - tot) > 1.0:
-            unit = round(tot / qty, 2)
+            unit = float(round(tot / qty))
+        else:
+            unit = float(round(unit))
+            tot = float(round(tot))
+
+        unit_label = str(item.get("unit") or "").strip()
+        if unit_label.upper() in ("N/A", "NONE", "NULL", "-"):
+            unit_label = ""
 
         normalized_items.append({
             "item_name": name,
+            "unit": unit_label,
             "quantity": qty,
             "unit_price": unit,
             "total_price": tot,
@@ -176,23 +188,23 @@ def normalize_invoice_extracted_data(parsed_json: dict, raw_text: str) -> dict:
 
     parsed_json["items"] = normalized_items
 
-    # 5. Kiểm toán total_amount và tax_amount
+    # 5. Kiểm toán total_amount và tax_amount (tự động làm tròn VNĐ về số nguyên để không bắt user chọn lại)
     try:
-        total_amount = float(parsed_json.get("total_amount", 0.0) or 0.0)
+        total_amount = float(round(float(parsed_json.get("total_amount", 0.0) or 0.0)))
     except (ValueError, TypeError):
         total_amount = 0.0
 
-    items_sum = sum(i["total_price"] for i in normalized_items)
+    items_sum = float(round(sum(i["total_price"] for i in normalized_items)))
     if total_amount <= 0 and items_sum > 0:
-        total_amount = round(items_sum, 2)
+        total_amount = items_sum
     parsed_json["total_amount"] = total_amount
 
     try:
-        tax_amount = float(parsed_json.get("tax_amount", 0.0) or 0.0)
+        tax_amount = float(round(float(parsed_json.get("tax_amount", 0.0) or 0.0)))
     except (ValueError, TypeError):
         tax_amount = 0.0
     parsed_json["tax_amount"] = max(0.0, tax_amount)
-    parsed_json["subtotal"] = round(max(0.0, total_amount - parsed_json["tax_amount"]), 2)
+    parsed_json["subtotal"] = float(round(max(0.0, total_amount - parsed_json["tax_amount"])))
 
     # 5b. Chuẩn hóa danh mục invoice_type khớp với 5 giá trị của Frontend
     valid_types = {"Supermarket", "Cafe/Restaurant", "Utility", "Shopping", "Other"}

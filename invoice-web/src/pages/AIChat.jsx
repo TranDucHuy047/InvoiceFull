@@ -34,6 +34,7 @@ import {
   Lightbulb,
   CheckCircle2,
   MessageSquare,
+  AlertTriangle,
 } from 'lucide-react';
 
 export default function AIChat() {
@@ -53,6 +54,7 @@ export default function AIChat() {
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
+  const [confirmModal, setConfirmModal] = useState(null); // { title, message, onConfirm }
 
   const buildWelcomeMessage = (invId, storeName) => ({
     role: 'ai',
@@ -167,48 +169,75 @@ export default function AIChat() {
     setShowHistoryDrawer(false);
   };
 
-  const handleStartNewChat = async () => {
-    const targetSession = currentInvoiceId || 'GLOBAL';
-    try {
-      await deleteChatSession(targetSession);
-      setSessions((prev) =>
-        prev.filter((s) => (s.session_id || s.scope_key) !== targetSession)
-      );
-    } catch (err) {
-      console.error(err);
-    }
-    setMessages([buildWelcomeMessage(currentInvoiceId, currentStoreName)]);
-    showToast('Đã làm mới cuộc trò chuyện');
-  };
-
-  const handleDeleteSession = async (e, sessId) => {
-    e.stopPropagation();
-    try {
-      await deleteChatSession(sessId);
-      setSessions((prev) =>
-        prev.filter((s) => (s.session_id || s.scope_key) !== sessId)
-      );
-      const activeKey = currentInvoiceId || 'GLOBAL';
-      if (sessId === activeKey) {
-        setMessages([buildWelcomeMessage(currentInvoiceId, currentStoreName)]);
-      }
-      showToast('Đã xóa phiên trò chuyện');
-    } catch (err) {
-      console.error('Lỗi xóa phiên chat:', err);
-    }
-  };
-
-  const handleClearAllHistory = async () => {
-    if (!window.confirm('Bạn có chắc muốn xóa toàn bộ lịch sử trò chuyện AI?')) return;
-    try {
-      await deleteAllChatHistory();
-      setSessions([]);
+  const handleStartNewChat = () => {
+    if (messages.length <= 1) {
       setMessages([buildWelcomeMessage(currentInvoiceId, currentStoreName)]);
-      setShowHistoryDrawer(false);
-      showToast('Đã xóa toàn bộ lịch sử trò chuyện');
-    } catch (err) {
-      console.error('Lỗi xóa toàn bộ lịch sử:', err);
+      showToast('Đã làm mới cuộc trò chuyện');
+      return;
     }
+    setConfirmModal({
+      title: 'Xác nhận làm mới hội thoại',
+      message: 'Bạn có chắc chắn muốn xóa phiên trò chuyện hiện tại để bắt đầu lại không?',
+      onConfirm: async () => {
+        const targetSession = currentInvoiceId || 'GLOBAL';
+        try {
+          await deleteChatSession(targetSession);
+          setSessions((prev) =>
+            prev.filter((s) => (s.session_id || s.scope_key) !== targetSession)
+          );
+        } catch (err) {
+          console.error(err);
+        }
+        setMessages([buildWelcomeMessage(currentInvoiceId, currentStoreName)]);
+        setConfirmModal(null);
+        showToast('Đã làm mới cuộc trò chuyện');
+      },
+    });
+  };
+
+  const handleDeleteSession = (e, sessId) => {
+    e.stopPropagation();
+    setConfirmModal({
+      title: 'Xác nhận xóa phiên chat',
+      message: 'Bạn có chắc chắn muốn xóa phiên trò chuyện này khỏi lịch sử?',
+      onConfirm: async () => {
+        try {
+          await deleteChatSession(sessId);
+          setSessions((prev) =>
+            prev.filter((s) => (s.session_id || s.scope_key) !== sessId)
+          );
+          const activeKey = currentInvoiceId || 'GLOBAL';
+          if (sessId === activeKey) {
+            setMessages([buildWelcomeMessage(currentInvoiceId, currentStoreName)]);
+          }
+          showToast('Đã xóa phiên trò chuyện');
+        } catch (err) {
+          console.error('Lỗi xóa phiên chat:', err);
+        } finally {
+          setConfirmModal(null);
+        }
+      },
+    });
+  };
+
+  const handleClearAllHistory = () => {
+    setConfirmModal({
+      title: 'Xác nhận xóa toàn bộ lịch sử',
+      message: 'Bạn có chắc chắn muốn xóa toàn bộ lịch sử trò chuyện AI? Hành động này không thể hoàn tác.',
+      onConfirm: async () => {
+        try {
+          await deleteAllChatHistory();
+          setSessions([]);
+          setMessages([buildWelcomeMessage(currentInvoiceId, currentStoreName)]);
+          setShowHistoryDrawer(false);
+          showToast('Đã xóa toàn bộ lịch sử trò chuyện');
+        } catch (err) {
+          console.error('Lỗi xóa toàn bộ lịch sử:', err);
+        } finally {
+          setConfirmModal(null);
+        }
+      },
+    });
   };
 
   const sendQuestion = async (questionText) => {
@@ -743,6 +772,47 @@ export default function AIChat() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal xác nhận xóa phiên chat */}
+      {confirmModal && (
+        <div className="modal-overlay" onClick={() => setConfirmModal(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+            <div className="modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--danger)' }}>
+                <AlertTriangle size={19} strokeWidth={1.75} />
+                {confirmModal.title}
+              </h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setConfirmModal(null)}
+              >
+                <X size={16} strokeWidth={1.75} />
+              </button>
+            </div>
+            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '20px', lineHeight: 1.6 }}>
+              {confirmModal.message}
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setConfirmModal(null)}
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={confirmModal.onConfirm}
+              >
+                <Trash2 size={15} strokeWidth={1.75} />
+                Chắc chắn muốn xóa
+              </button>
+            </div>
           </div>
         </div>
       )}

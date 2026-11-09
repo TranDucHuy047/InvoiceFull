@@ -13,7 +13,6 @@ import {
   Receipt,
   Wallet,
   CheckCircle2,
-  Clock,
   Calendar,
   Store,
   Utensils,
@@ -22,6 +21,7 @@ import {
   ChevronRight,
   X,
   ScanLine,
+  AlertTriangle,
 } from 'lucide-react';
 
 const TIME_PRESETS = [
@@ -178,18 +178,24 @@ export default function History() {
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [toast, setToast] = useState(null);
 
-  // Bộ tham số lọc tập trung (filterParams)
+  // Danh sách các hóa đơn được người dùng tích chọn để xuất file
+  const [selectedIds, setSelectedIds] = useState([]);
+
+  // Bộ tham số lọc chính thức đang áp dụng (filterParams)
   const [filterParams, setFilterParams] = useState({
     query: searchParams.get('q') || '',
-    timeRange: 'all', // 'all' | 'today' | '7d' | '30d' | 'this_week' | 'this_month' | 'this_year' | 'custom'
+    timeRange: 'all',
     dateFrom: '',
     dateTo: '',
-    status: 'all', // 'all' | 'verified' | 'draft'
+    status: 'all',
     invoiceType: 'all',
     minAmount: '',
     maxAmount: '',
     sortBy: 'date_desc',
   });
+
+  // Bộ tham số nháp trong Modal (chỉ áp dụng khi nhấn nút "Áp dụng", tránh việc thoát ra vẫn bị dính filter)
+  const [modalDraft, setModalDraft] = useState(filterParams);
 
   // Sync URL ?q= when navigated from Header quick search
   useEffect(() => {
@@ -202,8 +208,31 @@ export default function History() {
   const updateFilter = (patch) =>
     setFilterParams((prev) => ({ ...prev, ...patch }));
 
+  const updateModalDraft = (patch) =>
+    setModalDraft((prev) => ({ ...prev, ...patch }));
+
+  const openFilterModal = (initialPatch = {}) => {
+    setModalDraft({ ...filterParams, ...initialPatch });
+    setShowFilterModal(true);
+  };
+
+  const handleCloseFilterModal = () => {
+    // Khi thoát Modal mà chưa nhấn Áp dụng, không lưu modalDraft vào filterParams
+    setShowFilterModal(false);
+  };
+
+  const handleApplyModalFilter = () => {
+    const next = { ...modalDraft };
+    // Nếu chọn 'custom' nhưng chưa chọn mốc Từ ngày / Đến ngày thì không chèn vào filter
+    if (next.timeRange === 'custom' && !next.dateFrom && !next.dateTo) {
+      next.timeRange = filterParams.timeRange === 'custom' ? 'all' : filterParams.timeRange;
+    }
+    setFilterParams(next);
+    setShowFilterModal(false);
+  };
+
   const resetFilters = () => {
-    setFilterParams({
+    const clean = {
       query: '',
       timeRange: 'all',
       dateFrom: '',
@@ -213,7 +242,9 @@ export default function History() {
       minAmount: '',
       maxAmount: '',
       sortBy: 'date_desc',
-    });
+    };
+    setFilterParams(clean);
+    setModalDraft(clean);
     if (searchParams.get('q')) {
       setSearchParams({});
     }
@@ -343,27 +374,62 @@ export default function History() {
     return list;
   }, [invoices, filterParams]);
 
+  // Chọn / bỏ chọn hóa đơn để xuất file
+  const toggleSelectOne = (invoiceId) => {
+    setSelectedIds((prev) =>
+      prev.includes(invoiceId)
+        ? prev.filter((id) => id !== invoiceId)
+        : [...prev, invoiceId]
+    );
+  };
+
+  const validSelectedIds = useMemo(() => {
+    const filteredSet = new Set(filtered.map((i) => i.invoice_id));
+    return selectedIds.filter((id) => filteredSet.has(id));
+  }, [filtered, selectedIds]);
+
+  const isAllFilteredSelected =
+    filtered.length > 0 && validSelectedIds.length === filtered.length;
+
+  const toggleSelectAllFiltered = () => {
+    if (isAllFilteredSelected) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filtered.map((i) => i.invoice_id));
+    }
+  };
+
+  // Danh sách hóa đơn thực tế sẽ xuất (Nếu user có tích chọn thì xuất các HĐ đã chọn, ngược lại xuất tất cả kết quả lọc)
+  const targetExportInvoices = useMemo(() => {
+    if (validSelectedIds.length > 0) {
+      return filtered.filter((inv) => validSelectedIds.includes(inv.invoice_id));
+    }
+    return filtered;
+  }, [filtered, validSelectedIds]);
+
+  const exportBadgeCount = targetExportInvoices.length;
+
   // Xử lý xuất báo cáo theo exportType ('excel' | 'csv')
   const handleExport = (exportType) => {
     setExportMenuOpen(false);
-    if (filtered.length === 0) {
-      setToast({ type: 'error', text: 'Không có hóa đơn nào trong danh sách lọc để xuất!' });
+    if (targetExportInvoices.length === 0) {
+      setToast({ type: 'error', text: 'Không có hóa đơn nào để xuất!' });
       setTimeout(() => setToast(null), 3000);
       return;
     }
 
     const stamp = new Date().toISOString().slice(0, 10);
-    const totalSum = filtered.reduce((s, i) => s + (Number(i.total_amount) || 0), 0);
+    const totalSum = targetExportInvoices.reduce((s, i) => s + (Number(i.total_amount) || 0), 0);
 
     if (exportType === 'excel') {
       downloadExcelXLS(
-        filtered,
-        { count: filtered.length, total: totalSum },
+        targetExportInvoices,
+        { count: targetExportInvoices.length, total: totalSum },
         `Bao_cao_hoa_don_${stamp}.xls`
       );
       setToast({
         type: 'success',
-        text: `Đã xuất ${filtered.length} hóa đơn ra file Excel (.xls)`,
+        text: `Đã xuất ${targetExportInvoices.length} hóa đơn ra file Excel (.xls)`,
       });
     } else {
       const header = [
@@ -379,7 +445,7 @@ export default function History() {
         'Tổng Thanh Toán (VND)',
         'Chi Tiết Mặt Hàng',
       ];
-      const rows = filtered.map((inv, idx) => [
+      const rows = targetExportInvoices.map((inv, idx) => [
         idx + 1,
         inv.invoice_id || '',
         inv.store_name || 'Chưa xác định',
@@ -397,7 +463,7 @@ export default function History() {
       downloadCSV([header, ...rows], `Bao_cao_hoa_don_${stamp}.csv`);
       setToast({
         type: 'success',
-        text: `Đã xuất ${filtered.length} hóa đơn ra file CSV (.csv)`,
+        text: `Đã xuất ${targetExportInvoices.length} hóa đơn ra file CSV (.csv)`,
       });
     }
     setTimeout(() => setToast(null), 3200);
@@ -419,27 +485,28 @@ export default function History() {
     return <Store size={19} strokeWidth={1.75} />;
   };
 
+  const hasValidTimeFilter =
+    filterParams.timeRange !== 'all' &&
+    (filterParams.timeRange !== 'custom' || Boolean(filterParams.dateFrom || filterParams.dateTo));
+
   const activeFilterCount = useMemo(() => {
     let c = 0;
-    if (filterParams.timeRange !== 'all') c++;
+    if (hasValidTimeFilter) c++;
     if (filterParams.status !== 'all') c++;
     if (filterParams.invoiceType !== 'all') c++;
     if (filterParams.minAmount !== '' || filterParams.maxAmount !== '') c++;
     return c;
-  }, [filterParams]);
+  }, [filterParams, hasValidTimeFilter]);
 
   return (
     <div className="history-page">
-      {/* Header + Nút Xuất file Excel/CSV (exportType) */}
+      {/* Header + Nút Xuất file Excel/CSV với con số nổi ở góc trên bên phải */}
       <div className="inv-mgr-header">
         <div>
           <h2>Quản lý danh sách hóa đơn</h2>
-          <p>
-            Tìm kiếm, lọc theo ngày phát hành trên hóa đơn, trạng thái xác nhận và xuất báo cáo Excel/CSV
-          </p>
         </div>
 
-        <div className="inv-export-wrap" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+        <div className="inv-export-wrap" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
           <button
             className="btn btn-outline btn-sm"
             onClick={() => navigate('/scan')}
@@ -451,11 +518,12 @@ export default function History() {
           <div style={{ position: 'relative' }}>
             <button
               className="btn btn-primary btn-sm inv-export-btn"
-              style={{ width: 'auto' }}
+              style={{ width: 'auto', position: 'relative', overflow: 'visible' }}
               onClick={() => setExportMenuOpen((v) => !v)}
             >
               <Download size={16} strokeWidth={1.75} />
-              <span>Xuất file Excel / CSV ({filtered.length})</span>
+              <span>Xuất file Excel / CSV</span>
+              <span className="inv-export-floating-badge">{exportBadgeCount}</span>
             </button>
 
             {exportMenuOpen && (
@@ -465,12 +533,46 @@ export default function History() {
                   onClick={() => setExportMenuOpen(false)}
                 />
                 <div className="inv-export-menu">
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '12px',
+                      color: 'var(--text-secondary)',
+                      borderBottom: '1px solid var(--border-light)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '8px',
+                    }}
+                  >
+                    <span>
+                      {validSelectedIds.length > 0
+                        ? `Đang chọn ${validSelectedIds.length}/${filtered.length} hóa đơn`
+                        : `Xuất tất cả (${filtered.length} hóa đơn)`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={toggleSelectAllFiltered}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: 'var(--primary)',
+                        fontWeight: 700,
+                        fontSize: '12px',
+                        cursor: 'pointer',
+                        padding: 0,
+                        width: 'auto',
+                      }}
+                    >
+                      {isAllFilteredSelected ? 'Bỏ chọn' : 'Chọn tất cả'}
+                    </button>
+                  </div>
                   <button onClick={() => handleExport('excel')}>
                     <span className="ico xls">
                       <FileSpreadsheet size={18} strokeWidth={1.75} />
                     </span>
                     <div>
-                      <b>Xuất file Excel (.xls)</b>
+                      <b>Xuất file Excel (.xls) — {exportBadgeCount} HĐ</b>
                       <small>Bảng biểu định dạng chuẩn, có dòng tổng cộng</small>
                     </div>
                   </button>
@@ -479,7 +581,7 @@ export default function History() {
                       <FileText size={18} strokeWidth={1.75} />
                     </span>
                     <div>
-                      <b>Xuất file CSV (.csv)</b>
+                      <b>Xuất file CSV (.csv) — {exportBadgeCount} HĐ</b>
                       <small>Định dạng UTF-8 chuẩn cho kế toán &amp; phân tích</small>
                     </div>
                   </button>
@@ -517,12 +619,12 @@ export default function History() {
           <Calendar size={15} strokeWidth={1.75} className="inv-time-select-icon" />
           <select
             className="inv-select inv-time-select"
-            value={filterParams.timeRange}
+            value={hasValidTimeFilter ? filterParams.timeRange : 'all'}
             onChange={(e) => {
               const val = e.target.value;
               if (val === 'custom') {
-                updateFilter({ timeRange: 'custom' });
-                setShowFilterModal(true);
+                // Chỉ mở Modal với bản nháp 'custom', chưa áp vào filterParams cho tới khi user chọn ngày & nhấn Áp dụng
+                openFilterModal({ timeRange: 'custom' });
               } else {
                 updateFilter({ timeRange: val, dateFrom: '', dateTo: '' });
               }
@@ -552,7 +654,7 @@ export default function History() {
 
         <button
           className={`inv-filter-btn ${activeFilterCount > 0 ? 'has-filter' : ''}`}
-          onClick={() => setShowFilterModal(true)}
+          onClick={() => openFilterModal()}
         >
           <SlidersHorizontal size={16} strokeWidth={1.75} />
           <span>Bộ lọc nâng cao</span>
@@ -579,7 +681,7 @@ export default function History() {
         </div>
       </div>
 
-      {/* Chỉ giữ lại các nút lọc nhanh theo Trạng thái (Tất cả, Đã xác nhận, Chờ xác nhận) */}
+      {/* Các nút lọc nhanh theo Trạng thái + Chọn hóa đơn để xuất file */}
       <div className="inv-quick-chips">
         <span style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-muted)', marginRight: '4px' }}>
           Trạng thái:
@@ -594,10 +696,38 @@ export default function History() {
           </button>
         ))}
 
+        {filtered.length > 0 && (
+          <label
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              marginLeft: '12px',
+              fontSize: '12.5px',
+              fontWeight: 600,
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+          >
+            <input
+              type="checkbox"
+              className="trash-checkbox"
+              checked={isAllFilteredSelected}
+              onChange={toggleSelectAllFiltered}
+            />
+            <span>
+              {validSelectedIds.length > 0
+                ? `Đã chọn xuất (${validSelectedIds.length}/${filtered.length})`
+                : `Chọn tất cả để xuất (${filtered.length})`}
+            </span>
+          </label>
+        )}
+
         {/* Hiển thị thẻ bộ lọc đang kích hoạt (nếu có) */}
         {(activeFilterCount > 0 || filterParams.query) && (
           <div className="inv-active-filters" style={{ marginTop: 0, marginLeft: 'auto' }}>
-            {filterParams.timeRange !== 'all' && (
+            {hasValidTimeFilter && (
               <span className="inv-active-chip">
                 Thời gian:{' '}
                 {filterParams.timeRange === 'custom'
@@ -669,7 +799,7 @@ export default function History() {
         </div>
       </div>
 
-      {/* Danh sách Thẻ Hóa đơn (Đồng bộ chiều cao 100%) */}
+      {/* Danh sách Thẻ Hóa đơn (Đồng bộ chiều cao 100%, tích hợp checkbox chọn xuất file) */}
       {loading ? (
         <div className="loading-overlay">
           <div className="spinner"></div>
@@ -696,15 +826,26 @@ export default function History() {
           {filtered.map((inv) => {
             const itemCount = Array.isArray(inv.items) ? inv.items.length : 0;
             const hasAddress = Boolean(inv.store_address && inv.store_address.trim());
+            const isChecked = validSelectedIds.includes(inv.invoice_id);
             return (
               <div
                 key={inv.invoice_id}
-                className="inv-card"
+                className={`inv-card ${isChecked ? 'is-selected-card' : ''}`}
                 onClick={() => navigate(`/history/${inv.invoice_id}`)}
               >
                 <div className="inv-card-top">
-                  <div className="inv-card-ico" style={{ color: 'var(--primary)' }}>
-                    {renderTypeIcon(inv.invoice_type)}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <input
+                      type="checkbox"
+                      className="trash-checkbox"
+                      checked={isChecked}
+                      title="Chọn hóa đơn này để xuất file"
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={() => toggleSelectOne(inv.invoice_id)}
+                    />
+                    <div className="inv-card-ico" style={{ color: 'var(--primary)' }}>
+                      {renderTypeIcon(inv.invoice_type)}
+                    </div>
                   </div>
                   <span className={`inv-status ${inv.is_submitted ? 'ok' : 'draft'}`}>
                     {inv.is_submitted ? 'Đã xác nhận' : 'Chờ xác nhận'}
@@ -716,7 +857,6 @@ export default function History() {
                     {inv.store_name || 'Cửa hàng chưa xác định'}
                   </h4>
 
-                  {/* Luôn cố định vùng địa chỉ để các thẻ bằng chiều cao nhau */}
                   <p
                     className={`inv-card-addr ${!hasAddress ? 'is-empty' : ''}`}
                     title={hasAddress ? inv.store_address : 'Chưa cập nhật địa chỉ'}
@@ -751,13 +891,13 @@ export default function History() {
         </div>
       )}
 
-      {/* Modal Bộ lọc nâng cao (filterParams) */}
+      {/* Modal Bộ lọc nâng cao (Sử dụng modalDraft, chỉ áp dụng khi bấm nút Áp dụng) */}
       {showFilterModal && (
-        <div className="modal-overlay" onClick={() => setShowFilterModal(false)}>
+        <div className="modal-overlay" onClick={handleCloseFilterModal}>
           <div className="modal inv-filter-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Bộ lọc hóa đơn nâng cao</h3>
-              <button className="modal-close" onClick={() => setShowFilterModal(false)}>
+              <button className="modal-close" onClick={handleCloseFilterModal}>
                 <X size={16} strokeWidth={1.75} />
               </button>
             </div>
@@ -768,30 +908,31 @@ export default function History() {
                 {TIME_PRESETS.map((tp) => (
                   <button
                     key={tp.key}
-                    className={`chip ${filterParams.timeRange === tp.key ? 'active' : ''}`}
-                    onClick={() => updateFilter({ timeRange: tp.key })}
+                    type="button"
+                    className={`chip ${modalDraft.timeRange === tp.key ? 'active' : ''}`}
+                    onClick={() => updateModalDraft({ timeRange: tp.key })}
                   >
                     {tp.label}
                   </button>
                 ))}
               </div>
 
-              {filterParams.timeRange === 'custom' && (
+              {modalDraft.timeRange === 'custom' && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
                   <div className="date-input-row">
                     <label>Từ ngày</label>
                     <input
                       type="date"
-                      value={filterParams.dateFrom}
-                      onChange={(e) => updateFilter({ dateFrom: e.target.value })}
+                      value={modalDraft.dateFrom}
+                      onChange={(e) => updateModalDraft({ dateFrom: e.target.value })}
                     />
                   </div>
                   <div className="date-input-row">
                     <label>Đến ngày</label>
                     <input
                       type="date"
-                      value={filterParams.dateTo}
-                      onChange={(e) => updateFilter({ dateTo: e.target.value })}
+                      value={modalDraft.dateTo}
+                      onChange={(e) => updateModalDraft({ dateTo: e.target.value })}
                     />
                   </div>
                 </div>
@@ -804,8 +945,9 @@ export default function History() {
                 {STATUS_OPTIONS.map((st) => (
                   <button
                     key={st.key}
-                    className={`chip ${filterParams.status === st.key ? 'active' : ''}`}
-                    onClick={() => updateFilter({ status: st.key })}
+                    type="button"
+                    className={`chip ${modalDraft.status === st.key ? 'active' : ''}`}
+                    onClick={() => updateModalDraft({ status: st.key })}
                   >
                     {st.label}
                   </button>
@@ -819,8 +961,9 @@ export default function History() {
                 {TYPE_OPTIONS.map((tp) => (
                   <button
                     key={tp.key}
-                    className={`chip ${filterParams.invoiceType === tp.key ? 'active' : ''}`}
-                    onClick={() => updateFilter({ invoiceType: tp.key })}
+                    type="button"
+                    className={`chip ${modalDraft.invoiceType === tp.key ? 'active' : ''}`}
+                    onClick={() => updateModalDraft({ invoiceType: tp.key })}
                   >
                     {tp.label}
                   </button>
@@ -835,25 +978,32 @@ export default function History() {
                   type="number"
                   className="inv-num-input"
                   placeholder="Từ (VD: 50000)"
-                  value={filterParams.minAmount}
-                  onChange={(e) => updateFilter({ minAmount: e.target.value })}
+                  value={modalDraft.minAmount}
+                  onChange={(e) => updateModalDraft({ minAmount: e.target.value })}
                 />
                 <input
                   type="number"
                   className="inv-num-input"
                   placeholder="Đến (VD: 1000000)"
-                  value={filterParams.maxAmount}
-                  onChange={(e) => updateFilter({ maxAmount: e.target.value })}
+                  value={modalDraft.maxAmount}
+                  onChange={(e) => updateModalDraft({ maxAmount: e.target.value })}
                 />
               </div>
             </div>
 
             <div className="modal-actions">
-              <button className="btn btn-outline" onClick={resetFilters}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => {
+                  resetFilters();
+                  setShowFilterModal(false);
+                }}
+              >
                 Đặt lại mặc định
               </button>
-              <button className="btn btn-primary" onClick={() => setShowFilterModal(false)}>
-                Áp dụng ({filtered.length} HĐ)
+              <button type="button" className="btn btn-primary" onClick={handleApplyModalFilter}>
+                Áp dụng bộ lọc
               </button>
             </div>
           </div>
@@ -861,8 +1011,12 @@ export default function History() {
       )}
 
       {toast && (
-        <div className={`inv-toast ${toast.type}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-          <CheckCircle2 size={16} strokeWidth={1.75} />
+        <div className={`toast ${toast.type}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+          {toast.type === 'error' ? (
+            <AlertTriangle size={16} strokeWidth={1.75} />
+          ) : (
+            <CheckCircle2 size={16} strokeWidth={1.75} />
+          )}
           <span>{toast.text}</span>
         </div>
       )}

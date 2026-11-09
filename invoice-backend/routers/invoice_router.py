@@ -281,20 +281,28 @@ async def update_invoice_api(invoice_id: str, updated_data: InvoiceData, current
     Khi submit thành công, hóa đơn được khóa vĩnh viễn (is_submitted = True).
     """
     existing = get_invoice_by_id(invoice_id, user_id=current_user["id"])
-    if not existing:
-        raise HTTPException(status_code=404, detail="Không tìm thấy hóa đơn cần cập nhật.")
-        
-    if existing.get("is_submitted") is True:
+    if existing and existing.get("is_submitted") is True:
         raise HTTPException(
             status_code=400, 
             detail="Hóa đơn này đã được xác nhận (submit) và không thể chỉnh sửa nữa."
         )
 
-    # Kiểm tra trùng lặp với hóa đơn khác khi submit
+    # Làm tròn tiền tệ VNĐ tự động để không bắt user phải làm tròn tay
+    updated_data.total_amount = float(round(float(updated_data.total_amount or 0.0)))
+    if updated_data.tax_amount is not None:
+        updated_data.tax_amount = float(round(float(updated_data.tax_amount or 0.0)))
+    elif existing and existing.get("tax_amount"):
+        updated_data.tax_amount = float(round(float(existing.get("tax_amount") or 0.0)))
+    else:
+        updated_data.tax_amount = 0.0
+    updated_data.subtotal = float(round(max(0.0, updated_data.total_amount - updated_data.tax_amount)))
+
+    # Kiểm tra trùng lặp với hóa đơn ĐÃ XÁC NHẬN khác khi submit
     from database import client
     dup_where = [
         {"path": ["user_id"], "operator": "Equal", "valueNumber": current_user["id"]},
         {"path": ["is_deleted"], "operator": "Equal", "valueBoolean": False},
+        {"path": ["is_submitted"], "operator": "Equal", "valueBoolean": True},
         {"path": ["invoice_id"], "operator": "NotEqual", "valueString": invoice_id},
         {"path": ["total_amount"], "operator": "Equal", "valueNumber": updated_data.total_amount}
     ]
@@ -304,7 +312,7 @@ async def update_invoice_api(invoice_id: str, updated_data: InvoiceData, current
         dup_where.append({"path": ["date"], "operator": "Equal", "valueText": updated_data.date.strip()})
         
     dup_check = client.query.get("Invoice", ["invoice_id"]).with_where({"operator": "And", "operands": dup_where}).with_limit(1).do()
-    existing_dups = dup_check.get("data", {}).get("Get", {}).get("Invoice", [])
+    existing_dups = (dup_check.get("data") or {}).get("Get", {}).get("Invoice") or []
     if existing_dups:
         dup_id = existing_dups[0].get("invoice_id", "")
         raise HTTPException(
@@ -314,14 +322,20 @@ async def update_invoice_api(invoice_id: str, updated_data: InvoiceData, current
 
     updated_data.invoice_id = invoice_id
     updated_data.is_submitted = True
-    if not updated_data.image_path and existing.get("image_path"):
-        updated_data.image_path = existing.get("image_path")
-    if not updated_data.raw_text and existing.get("raw_text"):
+    if not updated_data.image_path:
+        if existing and existing.get("image_path"):
+            updated_data.image_path = existing.get("image_path")
+        else:
+            for ext in ("jpg", "png", "jpeg", "webp"):
+                cand = f"uploads/{invoice_id}.{ext}"
+                if os.path.exists(cand):
+                    updated_data.image_path = cand
+                    break
+    if not updated_data.raw_text and existing and existing.get("raw_text"):
         updated_data.raw_text = existing.get("raw_text")
-    if not updated_data.tax_amount and existing.get("tax_amount"):
-        updated_data.tax_amount = float(existing.get("tax_amount") or 0.0)
         
-    delete_invoice_completely(invoice_id, user_id=current_user["id"], delete_file=False)
+    if existing:
+        delete_invoice_completely(invoice_id, user_id=current_user["id"], delete_file=False)
     
     try:
         save_invoice(updated_data, user_id=current_user["id"], is_submitted=True)
@@ -433,11 +447,46 @@ async def analyze_single_invoice(
 
         # Lưu tạm với trạng thái is_submitted=False
         save_invoice(final_data, user_id=current_user["id"], is_submitted=False)
-        
+
+        # Kiểm tra nếu trong 1 bức ảnh AI phát hiện có > 1 tờ hóa đơn độc lập (sub_invoices)
+        raw_subs = parsed_json.get("sub_invoices")
+        multiple_list = []
+        if isinstance(raw_subs, list) and len(raw_subs) > 1:
+            multiple_list.append(final_data.dict())
+            for sub in raw_subs[1:]:
+                if not isinstance(sub, dict):
+                    continue
+                norm_sub = normalize_invoice_extracted_data(sub, ocr_text)
+                sub_id = f"INV_{str(uuid.uuid4())[:8].upper()}"
+                sub_img_path = f"uploads/{sub_id}.{file_extension}"
+                with open(sub_img_path, "wb") as f_sub:
+                    f_sub.write(image_bytes)
+                sub_data = InvoiceData(
+                    invoice_id=sub_id,
+                    ocr_confidence=0.95,
+                    store_name=norm_sub.get("store_name", ""),
+                    store_address=norm_sub.get("store_address", ""),
+                    date=norm_sub.get("date", ""),
+                    invoice_type=norm_sub.get("invoice_type", "Other"),
+                    subtotal=float(norm_sub.get("subtotal", 0.0) or 0.0),
+                    total_amount=float(norm_sub.get("total_amount", 0.0) or 0.0),
+                    tax_amount=float(norm_sub.get("tax_amount", 0.0) or 0.0),
+                    items=norm_sub.get("items", []),
+                    raw_text=norm_sub.get("raw_text_enriched") or ocr_text,
+                    image_path=sub_img_path,
+                    is_submitted=False
+                )
+                save_invoice(sub_data, user_id=current_user["id"], is_submitted=False)
+                multiple_list.append(sub_data.dict())
+
+        resp_dict = final_data.dict()
+        if len(multiple_list) > 1:
+            resp_dict["multiple_invoices"] = multiple_list
+
         return {
             "status": 200,
             "message": "Phân tích hóa đơn thành công! Vui lòng kiểm tra lại thông tin trước khi xác nhận.",
-            "data": final_data.dict()
+            "data": resp_dict
         }
         
     except HTTPException:

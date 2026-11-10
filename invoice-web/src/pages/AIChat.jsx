@@ -396,7 +396,9 @@ export default function AIChat() {
               {invoices.map((inv) => (
                 <option key={inv.invoice_id} value={inv.invoice_id}>
                   {inv.store_name || 'Cửa hàng'} — {inv.date || 'N/A'} (
-                  {Number(inv.total_amount || 0).toLocaleString('vi-VN')} đ)
+                  {inv.invoice_type === 'Document/Form'
+                    ? 'Tài liệu / Biểu mẫu'
+                    : `${Number(inv.total_amount || 0).toLocaleString('vi-VN')} đ`})
                 </option>
               ))}
             </select>
@@ -593,7 +595,11 @@ export default function AIChat() {
                         <strong>{inv.store_name || 'Cửa hàng'}</strong>
                         <span>{inv.date || 'N/A'}</span>
                       </div>
-                      <span className="ai-pick-amount">{formatCurrency(inv.total_amount)}</span>
+                      <span className="ai-pick-amount">
+                        {inv.invoice_type === 'Document/Form'
+                          ? 'Tài liệu / Biểu mẫu'
+                          : formatCurrency(inv.total_amount)}
+                      </span>
                     </button>
                   ))
                 )}

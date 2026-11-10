@@ -13,6 +13,8 @@ import {
   Plus,
   Trash2,
   RotateCcw,
+  RotateCw,
+  Crop,
   Eye,
   Cpu,
   Check,
@@ -25,6 +27,59 @@ import {
 } from 'lucide-react';
 
 const SCAN_DRAFT_STORAGE_KEY = 'invoice_ai_scan_draft_v2';
+const MULTI_INVOICE_MARKER = 'Chỉ được quét 1 hóa đơn';
+const DEFAULT_CROP_RECT = { top: 4, bottom: 4, left: 4, right: 4 };
+const MIN_CROP_SPAN = 10; // % tối thiểu của vùng cắt
+
+// ===== Tiện ích xử lý ảnh (Cắt viền / Xoay) bằng HTML5 Canvas =====
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+function dataUrlToFile(dataUrl, fileName) {
+  const [header, base64] = String(dataUrl).split(',');
+  const mime = (header.match(/:(.*?);/) || [])[1] || 'image/jpeg';
+  const binary = atob(base64 || '');
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new File([bytes], fileName, { type: mime });
+}
+
+// ===== Tách / ghép trường thông tin tài liệu "Tên trường: Nội dung" =====
+function splitFieldText(text) {
+  const raw = String(text || '');
+  const idx = raw.indexOf(':');
+  if (idx > 0 && idx <= 80) {
+    return { key: raw.slice(0, idx).trim(), val: raw.slice(idx + 1).trim() };
+  }
+  return { key: '', val: raw.trim() };
+}
+
+function composeFieldText(key, val) {
+  const k = String(key || '').trim();
+  const v = String(val || '').trim();
+  if (k && v) return `${k}: ${v}`;
+  if (k) return `${k}:`;
+  return v;
+}
+
+function getFieldParts(item) {
+  if (item && item.field_key !== undefined) {
+    return { key: item.field_key || '', val: item.field_value || '' };
+  }
+  return splitFieldText(item?.name || item?.item_name || '');
+}
+
+function autoResizeTextarea(el) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight}px`;
+}
 
 function inferVatFromRawText(rawText, totalAmount, itemsSum, storeName = '') {
   const total = Math.round(Number(totalAmount) || 0);
@@ -150,9 +205,12 @@ function buildFormDataFromInvoice(data) {
   const mappedItems = Array.isArray(data?.items)
     ? data.items.map((it) => {
         const itemName = it.item_name || it.name || '';
+        const parts = splitFieldText(itemName);
         return {
           name: itemName,
           item_name: itemName,
+          field_key: parts.key,
+          field_value: parts.val,
           unit: it.unit || '',
           quantity: Number(it.quantity) || 1,
           unit_price: Math.round(Number(it.unit_price) || 0),
@@ -225,6 +283,15 @@ export default function Scan() {
   const [selectedItemIndices, setSelectedItemIndices] = useState([]);
   const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false);
 
+  // Công cụ Cắt viền ảnh (Crop) & Xoay ảnh ở Bước 1
+  const [cropMode, setCropMode] = useState(() =>
+    String(scanRuntimeStore.error || '').includes(MULTI_INVOICE_MARKER)
+  );
+  const [cropRect, setCropRect] = useState(DEFAULT_CROP_RECT);
+  const [dragCorner, setDragCorner] = useState(null);
+  const [imageProcessing, setImageProcessing] = useState(false);
+  const cropBoxRef = useRef(null);
+
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
 
@@ -271,6 +338,8 @@ export default function Scan() {
       return;
     }
     setSelectedFiles(files);
+    setCropMode(false);
+    setCropRect(DEFAULT_CROP_RECT);
     const first = files[0];
     const meta = {
       name: files.length > 1 ? `${first.name} (+${files.length - 1} ảnh khác)` : first.name,
@@ -310,6 +379,119 @@ export default function Scan() {
     setIsDragging(false);
   };
 
+  // ===== CẮT VIỀN ẢNH (CROP) & XOAY ẢNH =====
+  // Kéo thả 4 góc khung cắt
+  useEffect(() => {
+    if (!dragCorner) return undefined;
+    const onMove = (e) => {
+      const rect = cropBoxRef.current?.getBoundingClientRect();
+      if (!rect || rect.width === 0 || rect.height === 0) return;
+      const x = Math.min(100, Math.max(0, ((e.clientX - rect.left) / rect.width) * 100));
+      const y = Math.min(100, Math.max(0, ((e.clientY - rect.top) / rect.height) * 100));
+      setCropRect((prev) => {
+        const next = { ...prev };
+        if (dragCorner.includes('t')) next.top = Math.max(0, Math.min(y, 100 - prev.bottom - MIN_CROP_SPAN));
+        if (dragCorner.includes('b')) next.bottom = Math.max(0, Math.min(100 - y, 100 - prev.top - MIN_CROP_SPAN));
+        if (dragCorner.includes('l')) next.left = Math.max(0, Math.min(x, 100 - prev.right - MIN_CROP_SPAN));
+        if (dragCorner.includes('r')) next.right = Math.max(0, Math.min(100 - x, 100 - prev.left - MIN_CROP_SPAN));
+        return next;
+      });
+    };
+    const onUp = () => setDragCorner(null);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [dragCorner]);
+
+  const handleCropSlider = (side, value) => {
+    const v = Number(value) || 0;
+    setCropRect((prev) => {
+      const opposite = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' }[side];
+      return { ...prev, [side]: Math.max(0, Math.min(v, 100 - prev[opposite] - MIN_CROP_SPAN)) };
+    });
+  };
+
+  // Thay ảnh chính đang chọn bằng ảnh mới (đã cắt / đã xoay)
+  const replacePrimaryImage = (dataUrl, label) => {
+    const rawName = selectedFiles[0]?.name || fileMeta?.name || 'chung_tu.jpg';
+    const baseName = rawName
+      .replace(/\s*\(\+\d+ ảnh khác\)$/, '')
+      .replace(/\.[^.]+$/, '')
+      .replace(/(_(cropped|rotated))+$/, '');
+    const newFile = dataUrlToFile(dataUrl, `${baseName}_${label}.jpg`);
+    const nextFiles = selectedFiles.length > 0 ? [newFile, ...selectedFiles.slice(1)] : [newFile];
+    setSelectedFiles(nextFiles);
+
+    setPreview(dataUrl);
+    scanRuntimeStore.preview = dataUrl;
+    const meta = {
+      name: nextFiles.length > 1 ? `${newFile.name} (+${nextFiles.length - 1} ảnh khác)` : newFile.name,
+      size: nextFiles.reduce((acc, f) => acc + f.size, 0),
+      count: nextFiles.length,
+    };
+    setFileMeta(meta);
+    scanRuntimeStore.fileMeta = meta;
+    persistRuntimeToSession();
+  };
+
+  const handleRotatePreview = async () => {
+    if (!preview || imageProcessing) return;
+    setImageProcessing(true);
+    try {
+      const img = await loadImageElement(preview);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalHeight;
+      canvas.height = img.naturalWidth;
+      const ctx = canvas.getContext('2d');
+      ctx.translate(canvas.width, 0);
+      ctx.rotate(Math.PI / 2);
+      ctx.drawImage(img, 0, 0);
+      replacePrimaryImage(canvas.toDataURL('image/jpeg', 0.95), 'rotated');
+      setCropRect(DEFAULT_CROP_RECT);
+    } catch (e) {
+      showToast('Không thể xoay ảnh. Vui lòng thử lại.', 'error');
+    } finally {
+      setImageProcessing(false);
+    }
+  };
+
+  const handleApplyCrop = async () => {
+    if (!preview || imageProcessing) return;
+    setImageProcessing(true);
+    try {
+      const img = await loadImageElement(preview);
+      const W = img.naturalWidth;
+      const H = img.naturalHeight;
+      const sx = Math.round((W * cropRect.left) / 100);
+      const sy = Math.round((H * cropRect.top) / 100);
+      const sw = Math.max(1, Math.round((W * (100 - cropRect.left - cropRect.right)) / 100));
+      const sh = Math.max(1, Math.round((H * (100 - cropRect.top - cropRect.bottom)) / 100));
+      const canvas = document.createElement('canvas');
+      canvas.width = sw;
+      canvas.height = sh;
+      canvas.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+      replacePrimaryImage(canvas.toDataURL('image/jpeg', 0.95), 'cropped');
+
+      setCropMode(false);
+      setCropRect(DEFAULT_CROP_RECT);
+      setError('');
+      scanRuntimeStore.error = '';
+      showToast('Đã cắt viền ảnh! Bấm "Bắt đầu đọc & bóc tách" để quét.');
+    } catch (e) {
+      showToast('Không thể cắt ảnh. Vui lòng thử lại.', 'error');
+    } finally {
+      setImageProcessing(false);
+    }
+  };
+
+  const handleCancelCrop = () => {
+    setCropMode(false);
+    setCropRect(DEFAULT_CROP_RECT);
+  };
+
   // Step 1 -> Step 2: Upload & Run OCR (chạy nền an toàn kể cả khi user chuyển tab)
   const handleScan = async (forceOverwrite = false) => {
     if (selectedFiles.length === 0 && !preview) {
@@ -319,13 +501,18 @@ export default function Scan() {
 
     scanRuntimeStore.loading = true;
     scanRuntimeStore.error = '';
+    setCropMode(false);
     if (!forceOverwrite) {
       scanRuntimeStore.duplicateAlert = null;
     }
     notifyRuntimeListeners();
 
     try {
-      const filesToProcess = selectedFiles;
+      // Sau khi tải lại trang, selectedFiles có thể trống nhưng vẫn còn ảnh xem trước -> dựng lại File từ preview
+      const filesToProcess =
+        selectedFiles.length > 0
+          ? selectedFiles
+          : [dataUrlToFile(preview, (fileMeta?.name || 'chung_tu.jpg').replace(/\s*\(\+\d+ ảnh khác\)$/, ''))];
       const collectedBills = [];
 
       for (let i = 0; i < filesToProcess.length; i++) {
@@ -395,6 +582,12 @@ export default function Scan() {
           date: detail.date,
           total_amount: detail.total_amount,
         };
+      } else if (typeof detail === 'string' && detail.includes(MULTI_INVOICE_MARKER)) {
+        // Ảnh chứa >= 2 hóa đơn -> chặn lại & tự động mở công cụ Cắt ảnh
+        scanRuntimeStore.error = detail;
+        setCropMode(true);
+        setCropRect(DEFAULT_CROP_RECT);
+        showToast('Phát hiện từ 2 hóa đơn trở lên trong ảnh! Hãy cắt lấy 1 hóa đơn rồi quét lại.', 'error');
       } else if (typeof detail === 'string' && detail.includes('đã tồn tại')) {
         const match = detail.match(/mã(?: hóa đơn)?:?\s*([A-Za-z0-9_]+)/i);
         scanRuntimeStore.duplicateAlert = {
@@ -418,22 +611,30 @@ export default function Scan() {
     const isDocForm = formData.invoice_type === 'Document/Form';
     for (let i = 0; i < formData.items.length; i++) {
       const it = formData.items[i];
+      const parts = getFieldParts(it);
       const nameStr = (it.name || it.item_name || '').trim();
       const uPrice = Number(it.unit_price) || 0;
       const tPrice = Number(it.total_price) || 0;
-      if (!nameStr) {
-        const msg = isDocForm
-          ? `Trường thông tin số ${i + 1} chưa nhập nội dung. Vui lòng điền thông tin hoặc xóa dòng trống!`
-          : `Dòng sản phẩm số ${i + 1} chưa nhập "Tên mặt hàng". Vui lòng điền thông tin hoặc xóa dòng trống trước khi thao tác tiếp!`;
-        setError(msg);
-        showToast(msg, 'error');
-        return false;
-      }
-      if (!isDocForm && uPrice <= 0 && tPrice <= 0) {
-        const msg = `Mặt hàng "${nameStr}" (dòng ${i + 1}) chưa có Đơn giá / Thành tiền. Vui lòng nhập giá tiền!`;
-        setError(msg);
-        showToast(msg, 'error');
-        return false;
+      if (isDocForm) {
+        if (!parts.key.trim() && !parts.val.trim() && !nameStr) {
+          const msg = `Trường thông tin số ${i + 1} chưa nhập nội dung. Vui lòng điền thông tin hoặc xóa dòng trống!`;
+          setError(msg);
+          showToast(msg, 'error');
+          return false;
+        }
+      } else {
+        if (!nameStr) {
+          const msg = `Dòng sản phẩm số ${i + 1} chưa nhập "Tên mặt hàng". Vui lòng điền thông tin hoặc xóa dòng trống trước khi thao tác tiếp!`;
+          setError(msg);
+          showToast(msg, 'error');
+          return false;
+        }
+        if (uPrice <= 0 && tPrice <= 0) {
+          const msg = `Mặt hàng "${nameStr}" (dòng ${i + 1}) chưa có Đơn giá / Thành tiền. Vui lòng nhập giá tiền!`;
+          setError(msg);
+          showToast(msg, 'error');
+          return false;
+        }
       }
     }
     setError('');
@@ -456,6 +657,25 @@ export default function Scan() {
         ...prev,
         [field]: value,
       };
+    });
+  };
+
+  const handleDocItemChange = (index, part, value) => {
+    setFormData((prev) => {
+      const updatedItems = [...prev.items];
+      const cur = { ...updatedItems[index] };
+      const parts = getFieldParts(cur);
+      const newKey = part === 'key' ? value : parts.key;
+      const newVal = part === 'val' ? value : parts.val;
+      const combined = composeFieldText(newKey, newVal);
+      updatedItems[index] = {
+        ...cur,
+        field_key: newKey,
+        field_value: newVal,
+        name: combined,
+        item_name: combined,
+      };
+      return { ...prev, items: updatedItems };
     });
   };
 
@@ -491,6 +711,8 @@ export default function Scan() {
         {
           name: '',
           item_name: '',
+          field_key: isDocForm ? `Trường ${prev.items.length + 1}` : '',
+          field_value: '',
           unit: isDocForm ? '' : 'Cái',
           quantity: 1,
           unit_price: 0,
@@ -700,9 +922,20 @@ export default function Scan() {
         tax_amount: cleanTax,
         total_amount: cleanTotal,
         items: formData.items
-          .filter((it) => (it.name || it.item_name || '').trim() !== '')
+          .filter((it) => {
+            const parts = getFieldParts(it);
+            return (
+              parts.key.trim() !== '' ||
+              parts.val.trim() !== '' ||
+              (it.name || it.item_name || '').trim() !== ''
+            );
+          })
           .map((it) => {
-            const cleanName = (it.name || it.item_name || '').trim();
+            const parts = getFieldParts(it);
+            const cleanName =
+              formData.invoice_type === 'Document/Form'
+                ? composeFieldText(parts.key, parts.val)
+                : (it.name || it.item_name || '').trim();
             return {
               name: cleanName,
               item_name: cleanName,
@@ -1106,14 +1339,40 @@ export default function Scan() {
                   <h4>Xem trước & Kết quả bóc tách</h4>
                 </div>
                 {preview && (
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={executeResetScan}
-                  >
-                    <RotateCcw size={14} strokeWidth={1.75} />
-                    Đổi ảnh khác
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${cropMode ? 'btn-primary' : 'btn-outline'}`}
+                      style={{ padding: '4px 10px', fontSize: '12.5px' }}
+                      onClick={() => setCropMode((v) => !v)}
+                      title="Cắt viền ảnh hoặc cắt riêng 1 hóa đơn"
+                      disabled={loading || imageProcessing}
+                    >
+                      <Crop size={14} strokeWidth={1.75} />
+                      {cropMode ? 'Đang cắt' : 'Cắt viền ảnh (Crop)'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      style={{ padding: '4px 10px', fontSize: '12.5px' }}
+                      onClick={handleRotatePreview}
+                      title="Xoay ảnh 90 độ"
+                      disabled={loading || imageProcessing}
+                    >
+                      <RotateCw size={14} strokeWidth={1.75} />
+                      Xoay
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ padding: '4px 8px', fontSize: '12.5px' }}
+                      onClick={executeResetScan}
+                      disabled={loading || imageProcessing}
+                      title="Chọn ảnh khác"
+                    >
+                      <RotateCcw size={14} strokeWidth={1.75} />
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1129,6 +1388,244 @@ export default function Scan() {
                   <div className="scan-empty-features">
                     <span><Sparkles size={14} strokeWidth={1.75} /> Tự động nhận diện tên cửa hàng & thuế GTGT</span>
                     <span><ListChecks size={14} strokeWidth={1.75} /> Bóc tách chi tiết từng dòng sản phẩm & đơn vị</span>
+                  </div>
+                </div>
+              ) : cropMode ? (
+                <div className="scan-crop-container" style={{ padding: '12px 14px' }}>
+                  <div
+                    ref={cropBoxRef}
+                    className="scan-crop-stage"
+                    style={{
+                      position: 'relative',
+                      userSelect: 'none',
+                      width: '100%',
+                      maxHeight: '320px',
+                      overflow: 'hidden',
+                      background: '#090d16',
+                      borderRadius: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      touchAction: 'none',
+                    }}
+                  >
+                    <img
+                      src={preview}
+                      alt="Crop Source"
+                      style={{
+                        maxWidth: '100%',
+                        maxHeight: '300px',
+                        objectFit: 'contain',
+                        display: 'block',
+                        opacity: 0.55,
+                        pointerEvents: 'none',
+                      }}
+                    />
+
+                    {/* Vùng chọn cắt sáng rõ */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: `${cropRect.top}%`,
+                        bottom: `${cropRect.bottom}%`,
+                        left: `${cropRect.left}%`,
+                        right: `${cropRect.right}%`,
+                        border: '2px solid #6366f1',
+                        boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.55), inset 0 0 12px rgba(99, 102, 241, 0.45)',
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          display: 'grid',
+                          gridTemplateColumns: '1fr 1fr 1fr',
+                          gridTemplateRows: '1fr 1fr 1fr',
+                          opacity: 0.4,
+                        }}
+                      >
+                        <div style={{ borderRight: '1px dashed #fff', borderBottom: '1px dashed #fff' }} />
+                        <div style={{ borderRight: '1px dashed #fff', borderBottom: '1px dashed #fff' }} />
+                        <div style={{ borderBottom: '1px dashed #fff' }} />
+                        <div style={{ borderRight: '1px dashed #fff', borderBottom: '1px dashed #fff' }} />
+                        <div style={{ borderRight: '1px dashed #fff', borderBottom: '1px dashed #fff' }} />
+                        <div style={{ borderBottom: '1px dashed #fff' }} />
+                        <div style={{ borderRight: '1px dashed #fff' }} />
+                        <div style={{ borderRight: '1px dashed #fff' }} />
+                        <div />
+                      </div>
+                    </div>
+
+                    {/* 4 Nút kéo góc */}
+                    <div
+                      onPointerDown={(e) => { e.preventDefault(); setDragCorner('tl'); }}
+                      style={{
+                        position: 'absolute',
+                        top: `${cropRect.top}%`,
+                        left: `${cropRect.left}%`,
+                        transform: 'translate(-50%, -50%)',
+                        width: '18px',
+                        height: '18px',
+                        background: '#6366f1',
+                        border: '2px solid #fff',
+                        borderRadius: '4px',
+                        cursor: 'nwse-resize',
+                        zIndex: 20,
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+                      }}
+                      title="Kéo góc trên-trái"
+                    />
+                    <div
+                      onPointerDown={(e) => { e.preventDefault(); setDragCorner('tr'); }}
+                      style={{
+                        position: 'absolute',
+                        top: `${cropRect.top}%`,
+                        right: `${cropRect.right}%`,
+                        transform: 'translate(50%, -50%)',
+                        width: '18px',
+                        height: '18px',
+                        background: '#6366f1',
+                        border: '2px solid #fff',
+                        borderRadius: '4px',
+                        cursor: 'nesw-resize',
+                        zIndex: 20,
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+                      }}
+                      title="Kéo góc trên-phải"
+                    />
+                    <div
+                      onPointerDown={(e) => { e.preventDefault(); setDragCorner('bl'); }}
+                      style={{
+                        position: 'absolute',
+                        bottom: `${cropRect.bottom}%`,
+                        left: `${cropRect.left}%`,
+                        transform: 'translate(-50%, 50%)',
+                        width: '18px',
+                        height: '18px',
+                        background: '#6366f1',
+                        border: '2px solid #fff',
+                        borderRadius: '4px',
+                        cursor: 'nesw-resize',
+                        zIndex: 20,
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+                      }}
+                      title="Kéo góc dưới-trái"
+                    />
+                    <div
+                      onPointerDown={(e) => { e.preventDefault(); setDragCorner('br'); }}
+                      style={{
+                        position: 'absolute',
+                        bottom: `${cropRect.bottom}%`,
+                        right: `${cropRect.right}%`,
+                        transform: 'translate(50%, 50%)',
+                        width: '18px',
+                        height: '18px',
+                        background: '#6366f1',
+                        border: '2px solid #fff',
+                        borderRadius: '4px',
+                        cursor: 'nwse-resize',
+                        zIndex: 20,
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.4)',
+                      }}
+                      title="Kéo góc dưới-phải"
+                    />
+                  </div>
+
+                  {/* Thanh trượt điều chỉnh tinh & Nút áp dụng */}
+                  <div
+                    style={{
+                      marginTop: '10px',
+                      padding: '10px 12px',
+                      background: 'var(--bg-main)',
+                      borderRadius: '10px',
+                      border: '1px solid var(--border-light)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: '12px',
+                        color: 'var(--text-muted)',
+                        marginBottom: '8px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span>Kéo 4 góc trên ảnh hoặc kéo thanh trượt dưới:</span>
+                      <span style={{ fontWeight: 700, color: 'var(--primary)' }}>
+                        Giữ lại: {Math.max(10, Math.round(100 - cropRect.left - cropRect.right))}% ×{' '}
+                        {Math.max(10, Math.round(100 - cropRect.top - cropRect.bottom))}%
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+                      <label style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                        Cắt mép Trên: <strong>{Math.round(cropRect.top)}%</strong>
+                        <input
+                          type="range"
+                          min="0"
+                          max="45"
+                          value={cropRect.top}
+                          onChange={(e) => handleCropSlider('top', e.target.value)}
+                          style={{ width: '100%', accentColor: 'var(--primary)' }}
+                        />
+                      </label>
+                      <label style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                        Cắt mép Dưới: <strong>{Math.round(cropRect.bottom)}%</strong>
+                        <input
+                          type="range"
+                          min="0"
+                          max="45"
+                          value={cropRect.bottom}
+                          onChange={(e) => handleCropSlider('bottom', e.target.value)}
+                          style={{ width: '100%', accentColor: 'var(--primary)' }}
+                        />
+                      </label>
+                      <label style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                        Cắt mép Trái: <strong>{Math.round(cropRect.left)}%</strong>
+                        <input
+                          type="range"
+                          min="0"
+                          max="45"
+                          value={cropRect.left}
+                          onChange={(e) => handleCropSlider('left', e.target.value)}
+                          style={{ width: '100%', accentColor: 'var(--primary)' }}
+                        />
+                      </label>
+                      <label style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                        Cắt mép Phải: <strong>{Math.round(cropRect.right)}%</strong>
+                        <input
+                          type="range"
+                          min="0"
+                          max="45"
+                          value={cropRect.right}
+                          onChange={(e) => handleCropSlider('right', e.target.value)}
+                          style={{ width: '100%', accentColor: 'var(--primary)' }}
+                        />
+                      </label>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={handleCancelCrop}
+                        disabled={imageProcessing}
+                      >
+                        Hủy cắt
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={handleApplyCrop}
+                        disabled={imageProcessing}
+                        style={{ width: 'auto' }}
+                      >
+                        <Check size={14} strokeWidth={2} />
+                        {imageProcessing ? 'Đang cắt ảnh...' : 'Áp dụng cắt'}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -1159,7 +1656,7 @@ export default function Scan() {
                       <Sparkles size={18} strokeWidth={1.75} />
                       {fileMeta?.count > 1
                         ? `Bắt đầu đọc & bóc tách (${fileMeta.count} hóa đơn)`
-                        : 'Bắt đầu đọc & bóc tách hóa đơn'}
+                        : 'Bắt đầu đọc & bóc tách'}
                     </button>
                   </div>
                 </div>
@@ -1410,7 +1907,7 @@ export default function Scan() {
                     <table className="scan-items-table">
                       <thead>
                         <tr>
-                          <th style={{ width: '6%', textAlign: 'center' }}>
+                          <th style={{ width: '5%', textAlign: 'center' }}>
                             <input
                               type="checkbox"
                               checked={
@@ -1422,46 +1919,70 @@ export default function Scan() {
                               style={{ width: '15px', height: '15px', accentColor: 'var(--primary)', cursor: 'pointer' }}
                             />
                           </th>
-                          <th style={{ width: '7%', textAlign: 'center' }}>STT</th>
-                          <th style={{ width: '79%' }}>Trường thông tin & Nội dung</th>
+                          <th style={{ width: '6%', textAlign: 'center' }}>STT</th>
+                          <th style={{ width: '28%' }}>Tên trường thông tin *</th>
+                          <th style={{ width: '53%' }}>Nội dung chi tiết</th>
                           <th style={{ width: '8%', textAlign: 'center' }}>Xóa</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {formData.items.map((item, idx) => (
-                          <tr key={idx}>
-                            <td style={{ textAlign: 'center' }}>
-                              <input
-                                type="checkbox"
-                                checked={selectedItemIndices.includes(idx)}
-                                onChange={() => handleToggleSelectItem(idx)}
-                                style={{ width: '15px', height: '15px', accentColor: 'var(--primary)', cursor: 'pointer' }}
-                              />
-                            </td>
-                            <td style={{ textAlign: 'center', fontWeight: 600, color: 'var(--text-muted)' }}>
-                              {idx + 1}
-                            </td>
-                            <td>
-                              <input
-                                type="text"
-                                className="form-input form-input-sm"
-                                value={item.name}
-                                onChange={(e) => handleItemChange(idx, 'name', e.target.value)}
-                                placeholder="VD: Họ và tên: Nguyễn Văn A..."
-                              />
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <button
-                                type="button"
-                                className="btn-icon-danger"
-                                onClick={() => confirmRemoveItem(idx)}
-                                title="Xóa trường thông tin này"
-                              >
-                                <Trash2 size={14} strokeWidth={1.75} />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
+                        {formData.items.map((item, idx) => {
+                          const parts = getFieldParts(item);
+                          return (
+                            <tr key={idx}>
+                              <td style={{ textAlign: 'center' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedItemIndices.includes(idx)}
+                                  onChange={() => handleToggleSelectItem(idx)}
+                                  style={{ width: '15px', height: '15px', accentColor: 'var(--primary)', cursor: 'pointer' }}
+                                />
+                              </td>
+                              <td style={{ textAlign: 'center', fontWeight: 600, color: 'var(--text-muted)' }}>
+                                {idx + 1}
+                              </td>
+                              <td>
+                                <input
+                                  type="text"
+                                  className="form-input form-input-sm"
+                                  style={{ fontWeight: 600 }}
+                                  value={parts.key}
+                                  onChange={(e) => handleDocItemChange(idx, 'key', e.target.value)}
+                                  placeholder="VD: Họ và tên, Cam kết 1..."
+                                />
+                              </td>
+                              <td>
+                                <textarea
+                                  rows={1}
+                                  className="form-input form-input-sm"
+                                  style={{
+                                    resize: 'vertical',
+                                    minHeight: '34px',
+                                    lineHeight: '1.45',
+                                    fontFamily: 'inherit',
+                                  }}
+                                  value={parts.val}
+                                  onChange={(e) => {
+                                    handleDocItemChange(idx, 'val', e.target.value);
+                                    autoResizeTextarea(e.target);
+                                  }}
+                                  onFocus={(e) => autoResizeTextarea(e.target)}
+                                  placeholder="Nhập nội dung chi tiết của trường này..."
+                                />
+                              </td>
+                              <td style={{ textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  className="btn-icon-danger"
+                                  onClick={() => confirmRemoveItem(idx)}
+                                  title="Xóa trường thông tin này"
+                                >
+                                  <Trash2 size={14} strokeWidth={1.75} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -1603,7 +2124,9 @@ export default function Scan() {
                 >
                   <CheckCircle2 size={18} strokeWidth={1.75} />
                   {submitting
-                    ? 'Đang lưu & khóa dữ liệu...'
+                    ? formData.invoice_type === 'Document/Form'
+                      ? 'Đang lưu tài liệu...'
+                      : 'Đang lưu & khóa dữ liệu...'
                     : multiBills.length > 1
                     ? `Xác nhận & Lưu ${formData.invoice_type === 'Document/Form' ? 'tài liệu' : 'HĐ'} #${activeBillIdx + 1}`
                     : formData.invoice_type === 'Document/Form'

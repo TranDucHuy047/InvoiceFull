@@ -872,8 +872,12 @@ export default function History() {
                       {inv.date || 'Chưa rõ ngày'}
                     </span>
                     <span>
-                      {inv.invoice_type || 'Hóa đơn'}
-                      {itemCount > 0 ? ` • ${itemCount} SP` : ''}
+                      {inv.invoice_type === 'Document/Form' ? 'Tài liệu / Biểu mẫu' : inv.invoice_type || 'Hóa đơn'}
+                      {itemCount > 0
+                        ? inv.invoice_type === 'Document/Form'
+                          ? ` • ${itemCount} trường`
+                          : ` • ${itemCount} SP`
+                        : ''}
                     </span>
                   </div>
                 </div>
@@ -881,7 +885,13 @@ export default function History() {
                 <div className="inv-card-foot">
                   <div>
                     <div className="inv-card-id">#{inv.invoice_id?.slice(-8)}</div>
-                    <div className="inv-card-amount">{formatCurrency(inv.total_amount)}</div>
+                    <div className="inv-card-amount">
+                      {inv.invoice_type === 'Document/Form'
+                        ? itemCount > 0
+                          ? `${itemCount} trường thông tin`
+                          : 'Tài liệu / Biểu mẫu'
+                        : formatCurrency(inv.total_amount)}
+                    </div>
                   </div>
                   <span className="inv-card-arrow" style={{ display: 'inline-flex' }}>
                     <ChevronRight size={18} strokeWidth={1.75} />

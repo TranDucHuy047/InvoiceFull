@@ -32,6 +32,21 @@ from invoice_normalizer import build_invoice_prompt, normalize_invoice_extracted
 # Khởi tạo Router
 router = APIRouter()
 
+MULTI_INVOICE_ERROR = (
+    "Chỉ được quét 1 hóa đơn trong mỗi bức ảnh! Hệ thống phát hiện có từ 2 hóa đơn trở lên, "
+    "vui lòng sử dụng công cụ Cắt ảnh (Crop) để cắt riêng từng hóa đơn."
+)
+
+
+def detect_multiple_invoices(parsed_json: dict) -> bool:
+    """Trả về True nếu AI phát hiện từ 2 hóa đơn/chứng từ độc lập trở lên trong cùng 1 bức ảnh."""
+    try:
+        count = int(float(parsed_json.get("detected_invoice_count", 1) or 1))
+    except (ValueError, TypeError):
+        count = 1
+    subs = parsed_json.get("sub_invoices") or []
+    return count >= 2 or (isinstance(subs, list) and len(subs) >= 2)
+
 # ==========================================
 # --- API ĐỢT 4 & MỞ RỘNG: PIPELINE TRÍCH XUẤT BATCH ---
 # ==========================================
@@ -66,6 +81,9 @@ async def extract_invoice_batch(files: List[UploadFile] = File(...), current_use
             
             # Hậu xử lý & chuẩn hóa loại bỏ ảo giác
             parsed_json = normalize_invoice_extracted_data(parsed_json, ocr_text)
+            if detect_multiple_invoices(parsed_json):
+                errors.append(f"{file.filename}: {MULTI_INVOICE_ERROR}")
+                continue
             if parsed_json.get("raw_text_enriched"):
                 ocr_text = parsed_json["raw_text_enriched"]
             
@@ -384,6 +402,12 @@ async def analyze_single_invoice(
         
         # Áp dụng hậu xử lý & chuẩn hóa loại bỏ hoàn toàn ảo giác
         parsed_json = normalize_invoice_extracted_data(parsed_json, ocr_text)
+
+        # Chặn ngay nếu 1 bức ảnh chứa từ 2 hóa đơn trở lên (KHÔNG lưu vào DB)
+        if detect_multiple_invoices(parsed_json):
+            print(f"[!] Phát hiện {parsed_json.get('detected_invoice_count')} chứng từ trong 1 ảnh -> yêu cầu cắt ảnh.")
+            raise HTTPException(status_code=400, detail=MULTI_INVOICE_ERROR)
+
         if parsed_json.get("raw_text_enriched"):
             ocr_text = parsed_json["raw_text_enriched"]
 
@@ -443,44 +467,16 @@ async def analyze_single_invoice(
         # Lưu tạm với trạng thái is_submitted=False
         save_invoice(final_data, user_id=current_user["id"], is_submitted=False)
 
-        # Kiểm tra nếu trong 1 bức ảnh AI phát hiện có > 1 tờ hóa đơn độc lập (sub_invoices)
-        raw_subs = parsed_json.get("sub_invoices")
-        multiple_list = []
-        if isinstance(raw_subs, list) and len(raw_subs) > 1:
-            multiple_list.append(final_data.dict())
-            for sub in raw_subs[1:]:
-                if not isinstance(sub, dict):
-                    continue
-                norm_sub = normalize_invoice_extracted_data(sub, ocr_text)
-                sub_id = f"INV_{str(uuid.uuid4())[:8].upper()}"
-                sub_img_path = f"uploads/{sub_id}.{file_extension}"
-                with open(sub_img_path, "wb") as f_sub:
-                    f_sub.write(image_bytes)
-                sub_data = InvoiceData(
-                    invoice_id=sub_id,
-                    ocr_confidence=0.95,
-                    store_name=norm_sub.get("store_name", ""),
-                    store_address=norm_sub.get("store_address", ""),
-                    date=norm_sub.get("date", ""),
-                    invoice_type=norm_sub.get("invoice_type", "Other"),
-                    subtotal=float(norm_sub.get("subtotal", 0.0) or 0.0),
-                    total_amount=float(norm_sub.get("total_amount", 0.0) or 0.0),
-                    tax_amount=float(norm_sub.get("tax_amount", 0.0) or 0.0),
-                    items=norm_sub.get("items", []),
-                    raw_text=norm_sub.get("raw_text_enriched") or ocr_text,
-                    image_path=sub_img_path,
-                    is_submitted=False
-                )
-                save_invoice(sub_data, user_id=current_user["id"], is_submitted=False)
-                multiple_list.append(sub_data.dict())
-
         resp_dict = final_data.dict()
-        if len(multiple_list) > 1:
-            resp_dict["multiple_invoices"] = multiple_list
+        is_doc = final_data.invoice_type == "Document/Form"
 
         return {
             "status": 200,
-            "message": "Phân tích hóa đơn thành công! Vui lòng kiểm tra lại thông tin trước khi xác nhận.",
+            "message": (
+                "Phân tích tài liệu thành công! Vui lòng kiểm tra lại thông tin trước khi xác nhận."
+                if is_doc else
+                "Phân tích hóa đơn thành công! Vui lòng kiểm tra lại thông tin trước khi xác nhận."
+            ),
             "data": resp_dict
         }
         

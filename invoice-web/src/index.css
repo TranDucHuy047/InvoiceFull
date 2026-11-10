@@ -6601,4 +6601,31 @@ a.header-bc-section:hover {
   white-space: nowrap;
 }
 
+/* --- 13.8 IMAGE CROP TOOL & DOCUMENT KEY-VALUE 2-COLUMN STYLES --- */
+.scan-crop-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  animation: fadeInCrop 0.25s ease;
+}
+
+@keyframes fadeInCrop {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.scan-crop-stage {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.scan-items-table textarea.form-input {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  overflow-y: hidden;
+}
+
+.scan-items-table textarea.form-input:focus {
+  overflow-y: auto;
+}
+
+
 

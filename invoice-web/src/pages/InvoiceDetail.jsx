@@ -220,10 +220,12 @@ export default function InvoiceDetail() {
           <ArrowLeft size={16} strokeWidth={1.75} />
           {t('back_btn')}
         </button>
-        <h2 style={{ fontSize: '20px', fontWeight: 700 }}>{t('invoice_detail_title')}</h2>
+        <h2 style={{ fontSize: '20px', fontWeight: 700 }}>
+          {isDocForm ? 'Chi tiết tài liệu' : t('invoice_detail_title')}
+        </h2>
         <button className="btn btn-danger btn-sm" onClick={() => setShowDeleteModal(true)}>
           <Trash2 size={15} strokeWidth={1.75} />
-          {t('delete_invoice_btn')}
+          {isDocForm ? 'Xóa tài liệu' : t('delete_invoice_btn')}
         </button>
       </div>
 
@@ -235,11 +237,13 @@ export default function InvoiceDetail() {
         <div className="inv-status-info">
           <span className="inv-status-title">
             {isDocForm
-              ? 'Tài liệu / Biểu mẫu đã xác nhận & lưu trữ cố định'
+              ? 'Tài liệu đã xác nhận & lưu trữ cố định'
               : 'Hóa đơn đã xác nhận & lưu trữ cố định'}
           </span>
           <span className="inv-status-desc">
-            Dữ liệu đã được khóa để đảm bảo tính toàn vẹn lưu trữ (Chỉ xem).
+            {isDocForm
+              ? 'Dữ liệu đã được khóa để đảm bảo tính toàn vẹn lưu trữ (Chỉ xem & chỉnh sửa trường).'
+              : 'Dữ liệu đã được khóa để đảm bảo tính toàn vẹn lưu trữ (Chỉ xem).'}
           </span>
         </div>
       </div>
@@ -526,8 +530,12 @@ export default function InvoiceDetail() {
           <Sparkles size={22} strokeWidth={1.75} />
         </span>
         <div>
-          <h4>{t('ask_ai_banner_title')}</h4>
-          <p>{t('ask_ai_banner_sub')}</p>
+          <h4>{isDocForm ? 'Hỏi AI về tài liệu này' : t('ask_ai_banner_title')}</h4>
+          <p>
+            {isDocForm
+              ? 'Đặt câu hỏi phân tích, tra cứu điều khoản hoặc nội dung trong tài liệu'
+              : t('ask_ai_banner_sub')}
+          </p>
         </div>
         <span className="ai-ask-arrow" style={{ display: 'inline-flex' }}>
           <ChevronRight size={20} strokeWidth={1.75} />
@@ -545,7 +553,7 @@ export default function InvoiceDetail() {
           }
         >
           <Flag size={14} strokeWidth={1.75} />
-          Báo cáo sai sót trên hóa đơn này
+          {isDocForm ? 'Báo cáo sai sót trên tài liệu này' : 'Báo cáo sai sót trên hóa đơn này'}
         </button>
       </div>
 
@@ -584,13 +592,15 @@ export default function InvoiceDetail() {
         <div className="modal-overlay" onClick={() => setShowDeleteModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>{t('confirm_delete_title')}</h3>
+              <h3>{isDocForm ? 'Xác nhận xóa tài liệu' : t('confirm_delete_title')}</h3>
               <button className="modal-close" onClick={() => setShowDeleteModal(false)}>
                 <X size={16} strokeWidth={1.75} />
               </button>
             </div>
             <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
-              {t('confirm_delete_sub')}
+              {isDocForm
+                ? 'Bạn có chắc chắn muốn chuyển tài liệu này vào thùng rác không?'
+                : t('confirm_delete_sub')}
             </p>
             <div className="form-group">
               <label>{t('delete_reason_label')}</label>
@@ -599,7 +609,7 @@ export default function InvoiceDetail() {
                 value={deleteReason}
                 onChange={(e) => setDeleteReason(e.target.value)}
               >
-                <option>Hóa đơn bị trùng lặp</option>
+                <option>Chứng từ bị trùng lặp</option>
                 <option>Thông tin OCR không chính xác</option>
                 <option>Không cần lưu trữ nữa</option>
                 <option>Khác</option>
@@ -611,7 +621,7 @@ export default function InvoiceDetail() {
               </button>
               <button className="btn btn-danger" onClick={handleDelete}>
                 <Trash2 size={15} strokeWidth={1.75} />
-                {t('delete_invoice_btn')}
+                {isDocForm ? 'Xóa tài liệu' : t('delete_invoice_btn')}
               </button>
             </div>
           </div>

@@ -57,7 +57,7 @@ export default function InvoiceManagement() {
 
   return (
     <div className="animate-fade-in">
-      <Header title="Quản lý hóa đơn" subtitle="Theo dõi hóa đơn đã lưu trong hệ thống." />
+      <Header title="Quản lý hóa đơn & tài liệu" subtitle="Theo dõi hóa đơn (SROIE) và tài liệu / biểu mẫu (FUNSD) đã lưu trong hệ thống." />
       
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
@@ -65,7 +65,7 @@ export default function InvoiceManagement() {
             <Search size={18} />
             <input 
               type="text" 
-              placeholder="Tìm cửa hàng, mã hóa đơn..." 
+              placeholder="Tìm cửa hàng, tiêu đề tài liệu, mã chứng từ..." 
               value={search}
               onChange={e => setSearch(e.target.value)}
             />

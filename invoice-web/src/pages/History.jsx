@@ -43,6 +43,7 @@ const STATUS_OPTIONS = [
 
 const TYPE_OPTIONS = [
   { key: 'all', label: 'Tất cả loại' },
+  { key: 'Document/Form', label: 'Tài liệu / Biểu mẫu (FUNSD)' },
   { key: 'Supermarket', label: 'Siêu thị / Bán lẻ' },
   { key: 'Cafe/Restaurant', label: 'Nhà hàng / Đồ uống' },
   { key: 'Utility', label: 'Tiện ích (Điện, Nước)' },
@@ -479,6 +480,7 @@ export default function History() {
 
   const renderTypeIcon = (type) => {
     const t = (type || '').toLowerCase();
+    if (t.includes('document') || t.includes('form')) return <FileText size={19} strokeWidth={1.75} />;
     if (t.includes('cafe') || t.includes('restaurant')) return <Utensils size={19} strokeWidth={1.75} />;
     if (t.includes('super')) return <ShoppingBag size={19} strokeWidth={1.75} />;
     if (t.includes('util')) return <Zap size={19} strokeWidth={1.75} />;

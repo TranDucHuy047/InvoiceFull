@@ -101,6 +101,11 @@ export default function InvoiceDetail() {
   }
 
   const items = invoice.items || [];
+  const isDocForm =
+    invoice.invoice_type === 'Document/Form' ||
+    (Number(invoice.total_amount || 0) === 0 &&
+      items.length > 0 &&
+      items.every((it) => Number(it.total_price || 0) === 0));
 
   return (
     <div style={{ maxWidth: '860px', margin: '0 auto' }}>
@@ -174,69 +179,110 @@ export default function InvoiceDetail() {
             <table className="result-table">
               <tbody>
                 <tr>
-                  <td>{t('store_name')}</td>
+                  <td>{isDocForm ? 'Tiêu đề tài liệu' : t('store_name')}</td>
                   <td>{invoice.store_name || 'Chưa xác định'}</td>
                 </tr>
                 {invoice.store_address && (
                   <tr>
-                    <td>{t('store_address')}</td>
+                    <td>{isDocForm ? 'Đơn vị / Địa chỉ' : t('store_address')}</td>
                     <td>{invoice.store_address}</td>
                   </tr>
                 )}
                 <tr>
-                  <td>{t('invoice_date')}</td>
+                  <td>{isDocForm ? 'Ngày tài liệu' : t('invoice_date')}</td>
                   <td>{invoice.date || 'Chưa rõ'}</td>
                 </tr>
                 <tr>
                   <td>Phân loại</td>
-                  <td>{invoice.invoice_type || 'Other'}</td>
+                  <td>
+                    {isDocForm
+                      ? 'Tài liệu / Biểu mẫu (FUNSD)'
+                      : invoice.invoice_type || 'Other'}
+                  </td>
                 </tr>
-                {invoice.tax_amount > 0 && (
+                {!isDocForm && invoice.tax_amount > 0 && (
                   <tr>
                     <td>{t('tax_vat')}</td>
                     <td>{formatCurrency(invoice.tax_amount)}</td>
                   </tr>
                 )}
-                <tr className="total-row">
-                  <td>{t('total_payment')}</td>
-                  <td>{formatCurrency(invoice.total_amount)}</td>
-                </tr>
+                {(!isDocForm || Number(invoice.total_amount) > 0) && (
+                  <tr className="total-row">
+                    <td>{t('total_payment')}</td>
+                    <td>{formatCurrency(invoice.total_amount)}</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
 
-          {/* Products */}
+          {/* Products / Document Key-Value Fields */}
           {items.length > 0 && (
             <div className="result-section">
               <h3>
-                {t('products_count')} ({items.length})
+                {isDocForm
+                  ? `Danh sách trường thông tin trên tài liệu (${items.length})`
+                  : `${t('products_count')} (${items.length})`}
               </h3>
-              <table className="products-table">
-                <thead>
-                  <tr>
-                    <th>{t('col_name')}</th>
-                    <th style={{ textAlign: 'center' }}>{t('col_unit') || 'Đơn vị'}</th>
-                    <th style={{ textAlign: 'center' }}>{t('col_quantity')}</th>
-                    <th style={{ textAlign: 'right' }}>{t('col_unit_price')}</th>
-                    <th style={{ textAlign: 'right' }}>{t('col_total')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item, idx) => (
-                    <tr key={idx}>
-                      <td>{item.item_name || item.name}</td>
-                      <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-                        {item.unit || '—'}
-                      </td>
-                      <td style={{ textAlign: 'center' }}>{item.quantity}</td>
-                      <td style={{ textAlign: 'right' }}>{formatCurrency(item.unit_price)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 600 }}>
-                        {formatCurrency(item.total_price)}
-                      </td>
+              {isDocForm ? (
+                <table className="products-table">
+                  <thead>
+                    <tr>
+                      <th style={{ width: '8%', textAlign: 'center' }}>STT</th>
+                      <th style={{ width: '34%' }}>Trường thông tin</th>
+                      <th style={{ width: '58%' }}>Nội dung chi tiết</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {items.map((item, idx) => {
+                      const rawStr = String(item.item_name || item.name || '').trim();
+                      const colonIdx = rawStr.indexOf(':');
+                      const fieldKey =
+                        colonIdx > 0 ? rawStr.slice(0, colonIdx).trim() : `Trường #${idx + 1}`;
+                      const fieldVal =
+                        colonIdx > 0 ? rawStr.slice(colonIdx + 1).trim() : rawStr;
+                      return (
+                        <tr key={idx}>
+                          <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                            {idx + 1}
+                          </td>
+                          <td style={{ fontWeight: 600, color: 'var(--primary)' }}>
+                            {fieldKey}
+                          </td>
+                          <td>{fieldVal || '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              ) : (
+                <table className="products-table">
+                  <thead>
+                    <tr>
+                      <th>{t('col_name')}</th>
+                      <th style={{ textAlign: 'center' }}>{t('col_unit') || 'Đơn vị'}</th>
+                      <th style={{ textAlign: 'center' }}>{t('col_quantity')}</th>
+                      <th style={{ textAlign: 'right' }}>{t('col_unit_price')}</th>
+                      <th style={{ textAlign: 'right' }}>{t('col_total')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item, idx) => (
+                      <tr key={idx}>
+                        <td>{item.item_name || item.name}</td>
+                        <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                          {item.unit || '—'}
+                        </td>
+                        <td style={{ textAlign: 'center' }}>{item.quantity}</td>
+                        <td style={{ textAlign: 'right' }}>{formatCurrency(item.unit_price)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                          {formatCurrency(item.total_price)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           )}
         </>

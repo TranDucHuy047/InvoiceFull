@@ -2,62 +2,71 @@ import re
 
 
 def build_invoice_prompt(ocr_text: str) -> str:
-    """Xây dựng prompt trích xuất hóa đơn Multimodal tổng quát cho mọi loại hóa đơn."""
-    return f"""Bạn là một chuyên gia AI kế toán chuyên trích xuất dữ liệu hóa đơn tiếng Việt từ hình ảnh chứng từ gốc kết hợp với văn bản OCR.
-Hãy đối chiếu trực tiếp HÌNH ẢNH HÓA ĐƠN ĐÍNH KÈM với văn bản OCR dưới đây để khôi phục thông tin hóa đơn chuẩn xác 100%:
+    """Xây dựng prompt trích xuất Multimodal hỗ trợ song song cả Hóa đơn (SROIE) và Tài liệu / Biểu mẫu có cấu trúc (FUNSD)."""
+    return f"""Bạn là một chuyên gia Document AI đa phương thức (Multimodal Document AI), chuyên trích xuất dữ liệu từ cả 2 loại chứng từ:
+1. HÓA ĐƠN MUA BÁN / BIÊN LAI THANH TOÁN (Dataset SROIE & Hóa đơn thực tế).
+2. TÀI LIỆU / BIỂU MẪU CÓ CẤU TRÚC (Dataset FUNSD: Phiếu đăng ký, phiếu thông tin, đơn đề nghị, biểu mẫu hành chính/khoa học/y tế có các cặp Nhãn trường Key -> Nội dung Value và các ô chọn Checkbox).
+
+Hãy đối chiếu trực tiếp HÌNH ẢNH CHỨNG TỪ ĐÍNH KÈM với văn bản OCR dưới đây để khôi phục thông tin chuẩn xác 100%:
 
 VĂN BẢN OCR THAM KHẢO:
 ---
 {ocr_text}
 ---
 
-QUY TẮC TRÍCH XUẤT BẮT BUỘC (ÁP DỤNG TỔNG QUÁT CHO MỌI HÓA ĐƠN):
-1. store_name: Tên thương hiệu hoặc tên cửa hàng/siêu thị/nhà hàng chính thức in ở phần đầu hóa đơn.
-   - TUYỆT ĐỐI KHÔNG lấy các dòng thông tin phụ như "PASSWORD WIFI", "WIFI", "Thu ngân", "Phiếu tính tiền", "Hóa đơn bán hàng", "Mã xác thực" làm tên cửa hàng.
-   - Không tự suy diễn tên trung tâm thương mại nếu không phải là đơn vị phát hành hóa đơn.
-2. store_address: Địa chỉ chi nhánh/cửa hàng in ở đầu hóa đơn. Đọc kỹ từ hình ảnh để khôi phục đúng số nhà, tên đường, quận/huyện, tỉnh/thành phố. Nếu không có địa chỉ trên hóa đơn thì trả về "".
-3. date: Ngày xuất hóa đơn theo định dạng chuẩn DD/MM/YYYY (ví dụ: "28/02/2019", "10/09/2026").
-   - Quan sát kỹ dòng ngày giờ in trên ảnh hóa đơn (kể cả khi bị dấu mộc đè lên hoặc nếp gấp làm mờ). Nếu năm chỉ có 2 chữ số (YY) thì chuẩn hóa thành 4 chữ số (20YY).
-4. invoice_type: Phân loại danh mục hóa đơn vào ĐÚNG 1 trong 5 giá trị sau:
-   - "Supermarket": Siêu thị, cửa hàng tiện lợi, tạp hóa (Big C, WinMart, Co.opmart, AEON, Circle K, GS25, Bách Hóa Xanh...).
-   - "Cafe/Restaurant": Quán cà phê, trà sữa, nhà hàng, quán ăn (Phúc Long, Highlands Coffee, Starbucks, Kichi-Kichi, Gogi House, KFC...).
+QUY TẮC TRÍCH XUẤT BẮT BUỘC:
+A. PHÂN BIỆT LOẠI CHỨNG TỪ (`invoice_type`):
+   Phân loại vào ĐÚNG 1 trong 6 giá trị sau:
+   - "Document/Form": Nếu ảnh là Phiếu đăng ký, Phiếu thông tin, Đơn từ, Biểu mẫu hành chính/khoa học/thí nghiệm/nội bộ (dạng FUNSD, có các trường Key-Value, ô Checkbox [X], chữ ký... chứ không phải hóa đơn mua bán hàng hóa).
+   - "Supermarket": Hóa đơn siêu thị, cửa hàng tiện lợi, tạp hóa (Big C, WinMart, Co.opmart, AEON, Circle K, GS25, Bách Hóa Xanh...).
+   - "Cafe/Restaurant": Hóa đơn quán cà phê, trà sữa, nhà hàng, quán ăn (Phúc Long, Highlands Coffee, Starbucks, Kichi-Kichi, Gogi House, KFC...).
    - "Utility": Hóa đơn điện, nước, internet, viễn thông, dịch vụ công ích.
-   - "Shopping": Cửa hàng thời trang, mỹ phẩm, điện máy, mua sắm bán lẻ (Glam Beautique, Uniqlo, Shopee, Guardian...).
-   - "Other": Các loại hóa đơn khác.
-5. total_amount: Tổng số tiền thanh toán cuối cùng trên hóa đơn (kiểu số thực float).
-   - Đối chiếu kỹ với tổng thành tiền của các dòng hàng và dòng "TỔNG CỘNG" / "THÀNH TIỀN" / "TỔNG THANH TOÁN" trên ảnh để tránh nhầm lẫn do nếp gấp giấy (như nhầm số 6 thành số 8).
-6. tax_amount: Tổng tiền thuế GTGT / VAT ghi trên hóa đơn (kiểu số thực float). Nếu hóa đơn có bảng kê thuế GTGT thì lấy đúng số tiền thuế GTGT; nếu không ghi tách biệt thì để 0.0.
-7. items: Danh sách tất cả các dòng hàng hóa/dịch vụ xuất hiện trên hóa đơn theo cấu trúc:
-   [{{"item_name": "Tên sản phẩm", "unit": "Đơn vị tính (Chai, Lon, Ly, Cái, Hộp, Kg, Gói, Phần... hoặc \"\" nếu không rõ)", "quantity": 1, "unit_price": 0.0, "total_price": 0.0}}]
-   - QUY TẮC SỐ LƯỢNG (QUANTITY) VÀ CỘT MÃ THUẾ / STT:
-     + Trên nhiều hóa đơn siêu thị/nhà hàng, cột ngoài cùng bên trái là cột "VAT" (mã nhóm thuế, ví dụ số 2) hoặc "STT". TUYỆT ĐỐI KHÔNG nhầm cột mã VAT hoặc STT ở đầu dòng thành số lượng (quantity) của sản phẩm!
-     + Số lượng mặc định của mỗi dòng hàng là 1, trừ khi có cột số lượng rõ ràng hoặc ngay bên dưới tên sản phẩm có dòng nhân số lượng x đơn giá (ví dụ: "2 x 6.400d" -> quantity=2, unit_price=6400.0, total_price=12800.0).
-     + Kiểm tra toán học cho từng dòng: quantity * unit_price phải bằng total_price.
-   - QUY TẮC ĐƠN VỊ TÍNH (UNIT):
-     + Nếu trên dòng hàng có ghi đơn vị tính (ví dụ: Chai, Lon, Hộp, Gói, Kg, Cái, Ly, Phần, Túi, Bộ...) thì trích xuất vào trường "unit". Nếu không ghi rõ nhưng tên mặt hàng có chứa đơn vị rõ ràng (như "Chai", "Lon", "Lốc", "Hộp", "Gói", "Ly") thì điền đơn vị tương ứng, ngược lại để "Cái" hoặc "".
-   - QUY TẮC GIỮ NGUYÊN DÒNG HÀNG (LINE ITEMS):
-     + Giữ nguyên từng dòng hàng theo đúng thứ tự in trên hóa đơn. TUYỆT ĐỐI KHÔNG tự ý gộp các dòng sản phẩm trùng tên lại thành 1 dòng.
-8. raw_text_enriched: Nhìn trực tiếp vào ảnh hóa đơn và chép lại đầy đủ, chính xác toàn bộ nội dung văn bản xuất hiện trên mặt hóa đơn từ trên xuống dưới, bao gồm:
-   - Tên đơn vị/công ty, Địa chỉ, Mã số thuế (MST), Số điện thoại bàn (Số ĐT), Số Hotline.
-   - Số phiếu (Ticket/Số HĐ), Thu ngân, Quầy, Ngày giờ in.
-   - Toàn bộ danh sách các dòng hàng, đơn vị tính, số lượng, đơn giá, thành tiền.
-   - Tổng cộng, Tổng số lượng mặt hàng, Tiền mặt/Tiền khách đưa, Tiền thối lại.
-   - Bảng chi tiết thuế suất GTGT (Thuế suất, Giá bán chưa có GTGT, Thuế GTGT).
-   - Ghi chú rõ nếu trên mặt hóa đơn có đóng dấu mộc (màu sắc, hình dáng, nội dung chữ bên trong dấu mộc như "HÀNG ĐÃ XUẤT", "ĐÃ THU TIỀN"...) hoặc chữ ký.
-9. sub_invoices (tùy chọn): Nếu trong CÙNG MỘT BỨC ẢNH người dùng chụp nhiều hơn 1 tờ hóa đơn độc lập (> 1 bill khác nhau), hãy liệt kê toàn bộ các hóa đơn đó vào mảng "sub_invoices" (mỗi phần tử có cùng cấu trúc store_name, store_address, date, invoice_type, total_amount, tax_amount, items, raw_text_enriched). Nếu ảnh chỉ có 1 hóa đơn thì trả về "sub_invoices": [].
+   - "Shopping": Hóa đơn cửa hàng thời trang, mỹ phẩm, điện máy, mua sắm bán lẻ (Glam Beautique, Uniqlo, Shopee, Guardian...).
+   - "Other": Các loại hóa đơn mua bán khác.
+
+B. QUY TẮC KHI CHỨNG TỪ LÀ TÀI LIỆU / BIỂU MẪU ("invoice_type": "Document/Form" - chuẩn FUNSD):
+   1. store_name: Lấy TIÊU ĐỀ CHÍNH của biểu mẫu/tài liệu (hoặc tên Tổ chức/Cơ quan ban hành biểu mẫu, ví dụ: "ACUTE TOXICITY IN MICE", "PHIẾU ĐĂNG KÝ THÔNG TIN", "PROJECT APPROVAL FORM"...).
+   2. store_address: Lấy Địa chỉ, Đơn vị/Phòng ban/Nguồn (Source) hoặc Họ tên người đăng ký/người lập ghi trong biểu mẫu (ví dụ: "Lorillard - Organic Chemistry" hoặc địa chỉ người khai).
+   3. date: Ngày đăng ký / ngày lập / ngày nhận / ngày hoàn thành ghi trong biểu mẫu (chuẩn hóa về DD/MM/YYYY nếu có thể, ví dụ "26/08/1980", hoặc giữ nguyên chuỗi ngày tháng trên biểu mẫu).
+   4. total_amount và tax_amount: Để 0.0 (nếu biểu mẫu không có tổng tiền thanh toán).
+   5. items: Trích xuất TẤT CẢ các cặp Trường thông tin (Key - Value) trên biểu mẫu thành danh sách items, trong đó mỗi phần tử có:
+      {{"item_name": "<Tên nhãn trường (Key)>: <Nội dung tương ứng (Value)>", "unit": "", "quantity": 1, "unit_price": 0.0, "total_price": 0.0}}
+      - Ví dụ với biểu mẫu FUNSD:
+        + {{"item_name": "COMPOUND: 3-Hydroxy-3-methylbutanoic acid (Tur 13)", "unit": "", "quantity": 1, "unit_price": 0.0, "total_price": 0.0}}
+        + {{"item_name": "SOURCE: Lorillard - Organic Chemistry", "unit": "", "quantity": 1, "unit_price": 0.0, "total_price": 0.0}}
+        + {{"item_name": "INVESTIGATOR(S): H. S. Tong & M. S. Forte", "unit": "", "quantity": 1, "unit_price": 0.0, "total_price": 0.0}}
+        + {{"item_name": "ROUTE OF ADMINISTRATION: P.O. (Checked [X])", "unit": "", "quantity": 1, "unit_price": 0.0, "total_price": 0.0}}
+      - CHÚ Ý ĐẶC BIỆT VỚI Ô CHECKBOX: Quan sát kỹ trên ảnh xem ô Checkbox nào được đánh dấu "X", dấu tick hoặc tô đậm, và ghi rõ trạng thái "(Checked [X])" vào nội dung Value của trường đó.
+   6. raw_text_enriched: Chép lại đầy đủ toàn bộ tiêu đề, tất cả các trường Key-Value, các bảng biểu, các ô Checkbox được chọn/không chọn, chữ viết tay, chữ ký và con dấu trên tài liệu.
+
+C. QUY TẮC KHI CHỨNG TỪ LÀ HÓA ĐƠN MUA HÀNG / BIÊN LAI (chuẩn SROIE):
+   1. store_name: Tên thương hiệu hoặc tên cửa hàng/siêu thị/nhà hàng chính thức in ở phần đầu hóa đơn.
+      - TUYỆT ĐỐI KHÔNG lấy các dòng thông tin phụ như "PASSWORD WIFI", "WIFI", "Thu ngân", "Phiếu tính tiền", "Hóa đơn bán hàng", "Mã xác thực" làm tên cửa hàng.
+   2. store_address: Địa chỉ chi nhánh/cửa hàng in ở đầu hóa đơn. Đọc kỹ từ hình ảnh để khôi phục đúng số nhà, tên đường, quận/huyện, tỉnh/thành phố. Nếu không có địa chỉ thì trả về "".
+   3. date: Ngày xuất hóa đơn theo định dạng chuẩn DD/MM/YYYY (ví dụ: "28/02/2019", "10/09/2026"). Nếu năm chỉ có 2 chữ số (YY) thì chuẩn hóa thành 4 chữ số (20YY hoặc 19YY phù hợp).
+   4. total_amount: Tổng số tiền thanh toán cuối cùng trên hóa đơn (kiểu số thực float). Đối chiếu kỹ với tổng thành tiền của các dòng hàng và dòng "TỔNG CỘNG" / "THÀNH TIỀN" trên ảnh.
+   5. tax_amount: Tổng tiền thuế GTGT / VAT ghi trên hóa đơn (kiểu số thực float). Nếu không ghi tách biệt thì để 0.0.
+   6. items: Danh sách tất cả các dòng hàng hóa/dịch vụ xuất hiện trên hóa đơn theo cấu trúc:
+      [{{"item_name": "Tên sản phẩm", "unit": "Đơn vị tính (Chai, Lon, Ly, Cái, Hộp, Kg, Gói, Phần... hoặc \"\" nếu không rõ)", "quantity": 1, "unit_price": 0.0, "total_price": 0.0}}]
+      - Trên nhiều hóa đơn siêu thị/nhà hàng, cột ngoài cùng bên trái là cột "VAT" (mã nhóm thuế, ví dụ số 2) hoặc "STT". TUYỆT ĐỐI KHÔNG nhầm cột mã VAT hoặc STT ở đầu dòng thành số lượng (quantity) của sản phẩm!
+      - Kiểm tra toán học cho từng dòng: quantity * unit_price phải bằng total_price.
+      - Giữ nguyên từng dòng hàng theo đúng thứ tự in trên hóa đơn, KHÔNG tự ý gộp các dòng sản phẩm trùng tên.
+   7. raw_text_enriched: Nhìn trực tiếp vào ảnh hóa đơn và chép lại đầy đủ toàn bộ nội dung văn bản từ trên xuống dưới (Tên đơn vị, Địa chỉ, MST, Số ĐT, Số HĐ/Ticket, Thu ngân, danh sách hàng hóa, Tổng cộng, Bảng thuế GTGT, chữ ký và dấu mộc nếu có).
+
+D. sub_invoices (tùy chọn): Nếu trong CÙNG MỘT BỨC ẢNH có nhiều hơn 1 tờ hóa đơn/tài liệu độc lập, hãy liệt kê vào mảng "sub_invoices". Nếu chỉ có 1 chứng từ thì trả về "sub_invoices": [].
 
 Chỉ trả về JSON thuần hợp lệ (không giải thích, không bọc trong markdown):
 {{
-    "store_name": "Tên cửa hàng",
-    "store_address": "Địa chỉ cửa hàng",
+    "store_name": "Tên cửa hàng hoặc Tiêu đề tài liệu/biểu mẫu",
+    "store_address": "Địa chỉ cửa hàng hoặc Đơn vị/Người đăng ký",
     "date": "DD/MM/YYYY",
     "invoice_type": "Other",
     "total_amount": 0.0,
     "tax_amount": 0.0,
     "items": [
-        {{"item_name": "Tên món", "unit": "", "quantity": 1, "unit_price": 0.0, "total_price": 0.0}}
+        {{"item_name": "Tên món hoặc Nhãn trường (Key): Nội dung (Value)", "unit": "", "quantity": 1, "unit_price": 0.0, "total_price": 0.0}}
     ],
-    "raw_text_enriched": "Toàn bộ văn bản chi tiết đọc từ ảnh hóa đơn và ghi chú dấu mộc (nếu có)",
+    "raw_text_enriched": "Toàn bộ văn bản chi tiết đọc từ ảnh hóa đơn/tài liệu, các ô checkbox [X], chữ ký và dấu mộc (nếu có)",
     "sub_invoices": []
 }}"""
 
@@ -117,20 +126,26 @@ def normalize_invoice_extracted_data(parsed_json: dict, raw_text: str) -> dict:
 
     # 3. Chuẩn hóa định dạng ngày tháng (DD/MM/YYYY)
     current_date = str(parsed_json.get("date") or "").strip()
-    if not current_date or current_date.upper() in ("N/A", "NONE", "NULL") or len(current_date) < 8:
+    if not current_date or current_date.upper() in ("N/A", "NONE", "NULL") or len(current_date) < 6:
         date_match = re.search(r"\b(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{2,4})\b", raw_text_str + "\n" + enriched_str)
         if date_match:
             d, m, y = date_match.groups()
+            d_i, m_i = int(d), int(m)
+            if d_i <= 12 and m_i > 12:
+                d_i, m_i = m_i, d_i
             if len(y) == 2:
-                y = "20" + y
-            parsed_json["date"] = f"{int(d):02d}/{int(m):02d}/{y}"
+                y = ("19" + y) if int(y) >= 50 else ("20" + y)
+            parsed_json["date"] = f"{d_i:02d}/{m_i:02d}/{y}"
     else:
         date_match = re.match(r"^(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{2,4})$", current_date)
         if date_match:
             d, m, y = date_match.groups()
+            d_i, m_i = int(d), int(m)
+            if d_i <= 12 and m_i > 12:
+                d_i, m_i = m_i, d_i
             if len(y) == 2:
-                y = "20" + y
-            parsed_json["date"] = f"{int(d):02d}/{int(m):02d}/{y}"
+                y = ("19" + y) if int(y) >= 50 else ("20" + y)
+            parsed_json["date"] = f"{d_i:02d}/{m_i:02d}/{y}"
 
     # 4. Kiểm toán toán học từng dòng hàng (items)
     raw_items = parsed_json.get("items") or []
@@ -206,11 +221,30 @@ def normalize_invoice_extracted_data(parsed_json: dict, raw_text: str) -> dict:
     parsed_json["tax_amount"] = max(0.0, tax_amount)
     parsed_json["subtotal"] = float(round(max(0.0, total_amount - parsed_json["tax_amount"])))
 
-    # 5b. Chuẩn hóa danh mục invoice_type khớp với 5 giá trị của Frontend
-    valid_types = {"Supermarket", "Cafe/Restaurant", "Utility", "Shopping", "Other"}
+    # 5b. Chuẩn hóa danh mục invoice_type khớp với 6 giá trị của Frontend (bao gồm Document/Form cho FUNSD)
+    valid_types = {"Document/Form", "Supermarket", "Cafe/Restaurant", "Utility", "Shopping", "Other"}
     raw_type = str(parsed_json.get("invoice_type") or "").strip()
-    if raw_type not in valid_types:
-        store_l = str(parsed_json.get("store_name") or "").lower()
+    store_l = str(parsed_json.get("store_name") or "").lower()
+
+    form_indicators = [
+        "form", "phiếu đăng ký", "phieu dang ky", "đơn đề nghị", "don de nghi",
+        "phiếu thông tin", "biểu mẫu", "bieu mau", "compound", "investigator",
+        "signature", "application", "registration", "acute toxicity", "memorandum",
+        "questionnaire", "route of administration", "checked [x]"
+    ]
+    all_items_zero_price = (
+        total_amount <= 0
+        and len(normalized_items) > 0
+        and all(float(i.get("total_price", 0.0) or 0.0) <= 0 for i in normalized_items)
+    )
+
+    if (
+        raw_type == "Document/Form"
+        or any(k in store_l or k in combined_lower for k in form_indicators)
+        or all_items_zero_price
+    ):
+        parsed_json["invoice_type"] = "Document/Form"
+    elif raw_type not in valid_types:
         if any(k in store_l or k in combined_lower for k in ["big c", "bigc", "winmart", "vinmart", "co.op", "coopmart", "aeon", "lotte", "circle k", "gs25", "familymart", "bách hóa xanh", "siêu thị"]):
             parsed_json["invoice_type"] = "Supermarket"
         elif any(k in store_l or k in combined_lower for k in ["phúc long", "phuc long", "highlands", "starbucks", "coffee", "cà phê", "ca phe", "trà sữa", "tra sua", "kichi", "gogi", "kfc", "lotteria", "jollibee", "tocotoco", "nhà hàng", "quán"]):

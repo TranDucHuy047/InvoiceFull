@@ -337,20 +337,23 @@ export default function Scan() {
     }
   };
 
-  // Kiểm tra xem có dòng mặt hàng nào vừa thêm nhưng chưa điền thông tin hay không
+  // Kiểm tra xem có dòng mặt hàng / trường thông tin nào vừa thêm nhưng chưa điền thông tin hay không
   const validateIncompleteItems = () => {
+    const isDocForm = formData.invoice_type === 'Document/Form';
     for (let i = 0; i < formData.items.length; i++) {
       const it = formData.items[i];
       const nameStr = (it.name || it.item_name || '').trim();
       const uPrice = Number(it.unit_price) || 0;
       const tPrice = Number(it.total_price) || 0;
       if (!nameStr) {
-        const msg = `Dòng sản phẩm số ${i + 1} chưa nhập "Tên mặt hàng". Vui lòng điền thông tin hoặc xóa dòng trống trước khi thao tác tiếp!`;
+        const msg = isDocForm
+          ? `Trường thông tin số ${i + 1} chưa nhập nội dung (Key: Value). Vui lòng điền thông tin hoặc xóa dòng trống!`
+          : `Dòng sản phẩm số ${i + 1} chưa nhập "Tên mặt hàng". Vui lòng điền thông tin hoặc xóa dòng trống trước khi thao tác tiếp!`;
         setError(msg);
         showToast(msg, 'error');
         return false;
       }
-      if (uPrice <= 0 && tPrice <= 0) {
+      if (!isDocForm && uPrice <= 0 && tPrice <= 0) {
         const msg = `Mặt hàng "${nameStr}" (dòng ${i + 1}) chưa có Đơn giá / Thành tiền. Vui lòng nhập giá tiền!`;
         setError(msg);
         showToast(msg, 'error');
@@ -393,11 +396,19 @@ export default function Scan() {
 
   const handleAddItem = () => {
     if (!validateIncompleteItems()) return;
+    const isDocForm = formData.invoice_type === 'Document/Form';
     setFormData((prev) => ({
       ...prev,
       items: [
         ...prev.items,
-        { name: '', item_name: '', unit: 'Cái', quantity: 1, unit_price: 0, total_price: 0 },
+        {
+          name: '',
+          item_name: '',
+          unit: isDocForm ? '' : 'Cái',
+          quantity: 1,
+          unit_price: 0,
+          total_price: 0,
+        },
       ],
     }));
   };
@@ -741,13 +752,15 @@ export default function Scan() {
         </div>
       )}
 
-      {/* Header (Đã bỏ dòng mô tả dài dòng theo feedback) */}
+      {/* Header (Hỗ trợ song song Hóa đơn SROIE & Tài liệu Biểu mẫu FUNSD) */}
       <div className="scan-header-bar">
         <div>
           <h2 style={{ fontSize: '22px', fontWeight: 800, margin: 0 }}>
             {extractedInvoice
-              ? 'Kiểm tra & Xác nhận hóa đơn'
-              : 'Quét & Bóc tách hóa đơn AI'}
+              ? formData.invoice_type === 'Document/Form'
+                ? 'Kiểm tra & Xác nhận Tài liệu / Biểu mẫu (FUNSD)'
+                : 'Kiểm tra & Xác nhận Hóa đơn (SROIE)'
+              : 'Quét Hóa đơn & Tài liệu AI (SROIE / FUNSD)'}
           </h2>
         </div>
 
@@ -887,9 +900,9 @@ export default function Scan() {
                 <UploadCloud size={32} strokeWidth={1.75} />
               </div>
 
-              <h3>Kéo thả ảnh hóa đơn vào đây</h3>
+              <h3>Kéo thả ảnh Hóa đơn (SROIE) hoặc Tài liệu / Biểu mẫu (FUNSD) vào đây</h3>
               <p className="scan-dropzone-sub">
-                Hỗ trợ chọn 1 hoặc nhiều ảnh hóa đơn cùng lúc (JPG, PNG, WEBP rõ nét).
+                Hỗ trợ tự động nhận diện cả Hóa đơn mua bán lẫn Biểu mẫu hành chính/khoa học có cấu trúc Key-Value & Checkbox (JPG, PNG, WEBP).
               </p>
 
               <div
@@ -1127,19 +1140,31 @@ export default function Scan() {
 
                 <div className="scan-form-grid">
                   <div className="form-group">
-                    <label>Tên cửa hàng / Đơn vị bán *</label>
+                    <label>
+                      {formData.invoice_type === 'Document/Form'
+                        ? 'Tiêu đề tài liệu / Đơn vị phát hành *'
+                        : 'Tên cửa hàng / Đơn vị bán *'}
+                    </label>
                     <input
                       type="text"
                       className="form-input"
                       value={formData.store_name}
                       onChange={(e) => handleFieldChange('store_name', e.target.value)}
-                      placeholder="Nhập tên cửa hàng..."
+                      placeholder={
+                        formData.invoice_type === 'Document/Form'
+                          ? 'Nhập tiêu đề biểu mẫu hoặc đơn vị phát hành...'
+                          : 'Nhập tên cửa hàng...'
+                      }
                       required
                     />
                   </div>
 
                   <div className="form-group">
-                    <label>Ngày phát hành hóa đơn</label>
+                    <label>
+                      {formData.invoice_type === 'Document/Form'
+                        ? 'Ngày tài liệu / Ngày đăng ký'
+                        : 'Ngày phát hành hóa đơn'}
+                    </label>
                     <input
                       type="text"
                       className="form-input"
@@ -1150,23 +1175,32 @@ export default function Scan() {
                   </div>
 
                   <div className="form-group" style={{ gridColumn: '1 / -1' }}>
-                    <label>Địa chỉ cửa hàng</label>
+                    <label>
+                      {formData.invoice_type === 'Document/Form'
+                        ? 'Địa chỉ / Người đăng ký / Nguồn'
+                        : 'Địa chỉ cửa hàng'}
+                    </label>
                     <input
                       type="text"
                       className="form-input"
                       value={formData.store_address}
                       onChange={(e) => handleFieldChange('store_address', e.target.value)}
-                      placeholder="Nhập địa chỉ trên hóa đơn..."
+                      placeholder={
+                        formData.invoice_type === 'Document/Form'
+                          ? 'Nhập địa chỉ, phòng ban, nguồn hoặc người đăng ký...'
+                          : 'Nhập địa chỉ trên hóa đơn...'
+                      }
                     />
                   </div>
 
                   <div className="form-group">
-                    <label>Phân loại hóa đơn</label>
+                    <label>Phân loại chứng từ</label>
                     <select
                       className="form-input"
                       value={formData.invoice_type}
                       onChange={(e) => handleFieldChange('invoice_type', e.target.value)}
                     >
+                      <option value="Document/Form">Tài liệu / Biểu mẫu hành chính (FUNSD)</option>
                       <option value="Supermarket">Siêu thị / Bán lẻ (Supermarket)</option>
                       <option value="Cafe/Restaurant">Nhà hàng / Đồ uống (F&B)</option>
                       <option value="Utility">Hóa đơn tiện ích (Điện, Nước, Viễn thông)</option>
@@ -1189,12 +1223,14 @@ export default function Scan() {
                 </div>
               </div>
 
-              {/* Line Items Card (Bổ sung cột Đơn vị) */}
+              {/* Line Items / Key-Value Fields Card */}
               <div className="scan-review-card">
                 <div className="scan-card-header">
                   <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <ListChecks size={17} strokeWidth={1.75} style={{ color: 'var(--primary)' }} />
-                    Danh sách sản phẩm ({formData.items.length})
+                    {formData.invoice_type === 'Document/Form'
+                      ? `Các trường thông tin bóc tách (Key - Value) (${formData.items.length})`
+                      : `Danh sách sản phẩm (${formData.items.length})`}
                   </h4>
                   <button
                     type="button"
@@ -1202,13 +1238,61 @@ export default function Scan() {
                     onClick={handleAddItem}
                   >
                     <Plus size={15} strokeWidth={1.75} />
-                    Thêm dòng
+                    {formData.invoice_type === 'Document/Form' ? 'Thêm trường' : 'Thêm dòng'}
                   </button>
                 </div>
 
                 {formData.items.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '14px' }}>
-                    Chưa có mặt hàng nào được bóc tách. Nhấn <strong>"Thêm dòng"</strong> để nhập bổ sung.
+                    {formData.invoice_type === 'Document/Form' ? (
+                      <>
+                        Chưa có trường thông tin nào được bóc tách. Nhấn <strong>"Thêm trường"</strong> để nhập bổ sung.
+                      </>
+                    ) : (
+                      <>
+                        Chưa có mặt hàng nào được bóc tách. Nhấn <strong>"Thêm dòng"</strong> để nhập bổ sung.
+                      </>
+                    )}
+                  </div>
+                ) : formData.invoice_type === 'Document/Form' ? (
+                  <div className="scan-items-table-wrap">
+                    <table className="scan-items-table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: '8%', textAlign: 'center' }}>STT</th>
+                          <th style={{ width: '84%' }}>Trường thông tin & Nội dung (Tên trường: Giá trị) *</th>
+                          <th style={{ width: '8%' }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {formData.items.map((item, idx) => (
+                          <tr key={idx}>
+                            <td style={{ textAlign: 'center', fontWeight: 600, color: 'var(--text-muted)' }}>
+                              {idx + 1}
+                            </td>
+                            <td>
+                              <input
+                                type="text"
+                                className="form-input form-input-sm"
+                                value={item.name}
+                                onChange={(e) => handleItemChange(idx, 'name', e.target.value)}
+                                placeholder="VD: COMPOUND: 3-Hydroxy-3-methylbutanoic acid..."
+                              />
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <button
+                                type="button"
+                                className="btn-icon-danger"
+                                onClick={() => confirmRemoveItem(idx)}
+                                title="Xóa trường này"
+                              >
+                                <Trash2 size={14} strokeWidth={1.75} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 ) : (
                   <div className="scan-items-table-wrap">

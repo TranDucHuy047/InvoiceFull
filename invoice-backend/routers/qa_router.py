@@ -116,96 +116,140 @@ def _fmt_vnd(val: float) -> str:
     return f"{float(val or 0):,.0f}".replace(",", ".") + "đ"
 
 
-def build_invoice_analytics_context(items: list) -> str:
-    """Tính toán chính xác 100% bằng Python cho các câu hỏi thống kê dòng hàng, gộp dòng trùng tên, đơn giá."""
-    if not items:
-        return "Không có thông tin chi tiết món hàng."
-    
-    valid_items = []
-    for item in items:
-        name = str(item.get("item_name", "") or "").strip()
-        if not name:
-            continue
-        qty = int(item.get("quantity", 1) or 1)
-        tot = float(item.get("total_price", 0.0) or 0.0)
-        unit = float(item.get("unit_price", 0.0) or 0.0)
-        if unit <= 0 and tot > 0 and qty > 0:
-            unit = round(tot / qty, 2)
-        elif tot <= 0 and unit > 0 and qty > 0:
-            tot = round(unit * qty, 2)
-        valid_items.append({
-            "item_name": name,
-            "quantity": qty,
-            "unit_price": unit,
-            "total_price": tot
-        })
-        
-    if not valid_items:
-        return "Không có thông tin chi tiết món hàng."
-        
-    line_items_count = len(valid_items)
-    total_units_count = sum(x["quantity"] for x in valid_items)
-    total_items_amount = sum(x["total_price"] for x in valid_items)
-    
-    lines_str = "1. DANH SÁCH TỪNG DÒNG HÀNG (LINE ITEMS) TRÊN HÓA ĐƠN:\n"
-    for idx, x in enumerate(valid_items, 1):
-        lines_str += (
-            f"   - Dòng {idx}: {x['item_name']} | Số lượng: {x['quantity']} | "
-            f"Đơn giá: {_fmt_vnd(x['unit_price'])} | Thành tiền: {_fmt_vnd(x['total_price'])}\n"
-        )
-        
-    # Gộp các dòng trùng tên
-    grouped_map = {}
-    for x in valid_items:
-        key = x["item_name"].upper().strip()
-        if key not in grouped_map:
-            grouped_map[key] = {
-                "item_name": x["item_name"],
-                "line_count": 0,
-                "total_quantity": 0,
-                "unit_price": x["unit_price"],
-                "total_spend": 0.0
-            }
-        grouped_map[key]["line_count"] += 1
-        grouped_map[key]["total_quantity"] += x["quantity"]
-        grouped_map[key]["total_spend"] += x["total_price"]
-        if x["unit_price"] > 0:
-            grouped_map[key]["unit_price"] = x["unit_price"]
-            
-    unique_products_count = len(grouped_map)
-    grouped_list = sorted(grouped_map.values(), key=lambda g: (g["total_spend"], g["unit_price"]), reverse=True)
-    
-    grouped_str = "\n2. BẢNG THỐNG KÊ SAU KHI GỘP CÁC DÒNG TRÙNG TÊN (SẮP XẾP THEO TỔNG TIỀN CHI TIÊU TỪ CAO XUỐNG THẤP):\n"
-    for rank, g in enumerate(grouped_list, 1):
-        grouped_str += (
-            f"   - Hạng {rank}: {g['item_name']} | Xuất hiện: {g['line_count']} dòng | "
-            f"Tổng số lượng: {g['total_quantity']} phần | Đơn giá: {_fmt_vnd(g['unit_price'])}/phần | "
-            f"TỔNG TIỀN (sau khi gộp): {_fmt_vnd(g['total_spend'])}\n"
-        )
-        
-    by_unit_price = sorted(grouped_map.values(), key=lambda g: g["unit_price"], reverse=True)
-    highest_unit = by_unit_price[0]
-    lowest_unit = by_unit_price[-1]
-    top_spend_grouped = grouped_list[0]
-    second_spend_grouped = grouped_list[1] if len(grouped_list) > 1 else None
-    
-    summary_str = (
-        "\n3. CHỈ SỐ THỐNG KÊ TỔNG HỢP CHÍNH XÁC 100% (BẮT BUỘC DÙNG SỐ LIỆU NÀY KHI TRẢ LỜI):\n"
-        f"   - Tổng số dòng hàng (line items) trên hóa đơn: {line_items_count} dòng hàng.\n"
-        f"   - Số loại sản phẩm khác nhau (unique products): {unique_products_count} loại sản phẩm.\n"
-        f"   - Tổng số lượng đơn vị hàng hóa (tổng số món): {total_units_count} món (đơn vị hàng hóa).\n"
-        f"   - Tổng thành tiền của tất cả {line_items_count} dòng hàng: {_fmt_vnd(total_items_amount)}.\n"
-        f"   - Loại sản phẩm khách hàng chi nhiều tiền nhất (khi gộp các dòng trùng tên lại): {top_spend_grouped['item_name']} "
-        f"với tổng số tiền là {_fmt_vnd(top_spend_grouped['total_spend'])} ({top_spend_grouped['total_quantity']} phần x {_fmt_vnd(top_spend_grouped['unit_price'])}, xuất hiện ở {top_spend_grouped['line_count']} dòng)"
-        + (f", cao hơn {second_spend_grouped['item_name']} ({_fmt_vnd(second_spend_grouped['total_spend'])}).\n" if second_spend_grouped else ".\n")
-        + f"   - Sản phẩm có đơn giá (1 đơn vị) cao nhất trên hóa đơn: {highest_unit['item_name']} với đơn giá {_fmt_vnd(highest_unit['unit_price'])}.\n"
-        + f"   - Sản phẩm có đơn giá (1 đơn vị) thấp nhất trên hóa đơn: {lowest_unit['item_name']} với đơn giá {_fmt_vnd(lowest_unit['unit_price'])}.\n"
+def build_invoice_analytics_context(
+    items: list, invoice_type: str = "Other"
+) -> str:
+  """Tính toán chính xác bằng Python cho cả Hóa đơn (SROIE) và Tài liệu Biểu mẫu (FUNSD)."""
+  if not items:
+    return "Không có thông tin chi tiết món hàng / trường dữ liệu."
+
+  valid_items = []
+  for item in items:
+    name = str(item.get("item_name", "") or "").strip()
+    if not name:
+      continue
+    qty = int(item.get("quantity", 1) or 1)
+    tot = float(item.get("total_price", 0.0) or 0.0)
+    unit = float(item.get("unit_price", 0.0) or 0.0)
+    if unit <= 0 and tot > 0 and qty > 0:
+      unit = round(tot / qty, 2)
+    elif tot <= 0 and unit > 0 and qty > 0:
+      tot = round(unit * qty, 2)
+    valid_items.append({
+        "item_name": name,
+        "quantity": qty,
+        "unit_price": unit,
+        "total_price": tot,
+    })
+
+  if not valid_items:
+    return "Không có thông tin chi tiết món hàng / trường dữ liệu."
+
+  # Nếu là Tài liệu / Biểu mẫu (FUNSD) hoặc tất cả các mục đều có giá = 0
+  is_doc_form = invoice_type == "Document/Form" or all(
+      x["total_price"] <= 0 and x["unit_price"] <= 0 for x in valid_items
+  )
+  if is_doc_form:
+    lines_str = (
+        f"DANH SÁCH CÁC TRƯỜNG THÔNG TIN (KEY - VALUE) TRÊN TÀI LIỆU / BIỂU"
+        f" MẪU ({len(valid_items)} trường):\n"
     )
-    
-    return lines_str + grouped_str + summary_str
+    for idx, x in enumerate(valid_items, 1):
+      lines_str += f"   - Trường {idx}: {x['item_name']}\n"
+    return lines_str
+
+  line_items_count = len(valid_items)
+  total_units_count = sum(x["quantity"] for x in valid_items)
+  total_items_amount = sum(x["total_price"] for x in valid_items)
+
+  lines_str = "1. DANH SÁCH TỪNG DÒNG HÀNG (LINE ITEMS) TRÊN HÓA ĐƠN:\n"
+  for idx, x in enumerate(valid_items, 1):
+    lines_str += (
+        f"   - Dòng {idx}: {x['item_name']} | Số lượng: {x['quantity']} |"
+        f" Đơn giá: {_fmt_vnd(x['unit_price'])} | Thành tiền:"
+        f" {_fmt_vnd(x['total_price'])}\n"
+    )
+
+  # Gộp các dòng trùng tên
+  grouped_map = {}
+  for x in valid_items:
+    key = x["item_name"].upper().strip()
+    if key not in grouped_map:
+      grouped_map[key] = {
+          "item_name": x["item_name"],
+          "line_count": 0,
+          "total_quantity": 0,
+          "unit_price": x["unit_price"],
+          "total_spend": 0.0,
+      }
+    grouped_map[key]["line_count"] += 1
+    grouped_map[key]["total_quantity"] += x["quantity"]
+    grouped_map[key]["total_spend"] += x["total_price"]
+    if x["unit_price"] > 0:
+      grouped_map[key]["unit_price"] = x["unit_price"]
+
+  unique_products_count = len(grouped_map)
+  grouped_list = sorted(
+      grouped_map.values(),
+      key=lambda g: (g["total_spend"], g["unit_price"]),
+      reverse=True,
+  )
+
+  grouped_str = (
+      "\n2. BẢNG THỐNG KÊ SAU KHI GỘP CÁC DÒNG TRÙNG TÊN (SẮP XẾP THEO TỔNG"
+      " TIỀN CHI TIÊU TỪ CAO XUỐNG THẤP):\n"
+  )
+  for rank, g in enumerate(grouped_list, 1):
+    grouped_str += (
+        f"   - Hạng {rank}: {g['item_name']} | Xuất hiện: {g['line_count']}"
+        f" dòng | Tổng số lượng: {g['total_quantity']} phần | Đơn giá:"
+        f" {_fmt_vnd(g['unit_price'])}/phần | TỔNG TIỀN (sau khi gộp):"
+        f" {_fmt_vnd(g['total_spend'])}\n"
+    )
+
+  by_unit_price = sorted(
+      grouped_map.values(), key=lambda g: g["unit_price"], reverse=True
+  )
+  highest_unit = by_unit_price[0]
+  lowest_unit = by_unit_price[-1]
+  top_spend_grouped = grouped_list[0]
+  second_spend_grouped = grouped_list[1] if len(grouped_list) > 1 else None
+
+  summary_str = (
+      "\n3. CHỈ SỐ THỐNG KÊ TỔNG HỢP CHÍNH XÁC 100% (BẮT BUỘC DÙNG SỐ LIỆU"
+      " NÀY KHI TRẢ LỜI):\n"
+      f"   - Tổng số dòng hàng (line items) trên hóa đơn: {line_items_count}"
+      " dòng hàng.\n"
+      "   - Số loại sản phẩm khác nhau (unique products):"
+      f" {unique_products_count} loại sản phẩm.\n"
+      f"   - Tổng số lượng đơn vị hàng hóa (tổng số món): {total_units_count}"
+      " món (đơn vị hàng hóa).\n"
+      f"   - Tổng thành tiền của tất cả {line_items_count} dòng hàng:"
+      f" {_fmt_vnd(total_items_amount)}.\n"
+      "   - Loại sản phẩm khách hàng chi nhiều tiền nhất (khi gộp các dòng"
+      f" trùng tên lại): {top_spend_grouped['item_name']} với tổng số tiền là"
+      f" {_fmt_vnd(top_spend_grouped['total_spend'])}"
+      f" ({top_spend_grouped['total_quantity']} phần x"
+      f" {_fmt_vnd(top_spend_grouped['unit_price'])}, xuất hiện ở"
+      f" {top_spend_grouped['line_count']} dòng)"
+      + (
+          f", cao hơn {second_spend_grouped['item_name']}"
+          f" ({_fmt_vnd(second_spend_grouped['total_spend'])}).\n"
+          if second_spend_grouped
+          else ".\n"
+      )
+      + "   - Sản phẩm có đơn giá (1 đơn vị) cao nhất trên hóa đơn:"
+      f" {highest_unit['item_name']} với đơn giá"
+      f" {_fmt_vnd(highest_unit['unit_price'])}.\n"
+      + "   - Sản phẩm có đơn giá (1 đơn vị) thấp nhất trên hóa đơn:"
+      f" {lowest_unit['item_name']} với đơn giá"
+      f" {_fmt_vnd(lowest_unit['unit_price'])}.\n"
+  )
+
+  return lines_str + grouped_str + summary_str
 
 def is_out_of_scope_question(q: str) -> bool:
-    """Phát hiện sớm các câu hỏi ngoài phạm vi hóa đơn/chi tiêu (viết code, giải toán, làm thơ...)"""
+    """Phát hiện sớm các câu hỏi ngoài phạm vi hóa đơn/chi tiêu/tài liệu biểu mẫu (viết code, giải toán, làm thơ...)"""
     q_norm = _remove_diacritics(q).strip()
     
     # Từ khóa ngoài phạm vi rõ ràng
@@ -215,10 +259,13 @@ def is_out_of_scope_question(q: str) -> bool:
         "thoi tiet", "dich tieng", "tap lam van", "giai toan", "tro chuyen"
     ]
     
-    # Từ khóa cụ thể liên quan đến hóa đơn / chi tiêu
+    # Từ khóa cụ thể liên quan đến hóa đơn (SROIE) và tài liệu / biểu mẫu (FUNSD)
     invoice_keywords = [
         "hoa don", "chi tieu", "mua sam", "cua hang", "quan an", "tong tien", 
-        "san pham", "mon hang", "gia tien", "vat", "thue", "voucher", "giam gia"
+        "san pham", "mon hang", "gia tien", "vat", "thue", "voucher", "giam gia",
+        "tai lieu", "bieu mau", "phieu", "don", "dang ky", "thong tin", "nguoi dang ky",
+        "nguoi thuc hien", "ho ten", "chu ky", "checkbox", "muc", "truong",
+        "compound", "investigator", "source", "form", "document"
     ]
     
     has_out = any(re.search(r'\b' + re.escape(w) + r'\b', q_norm) for w in out_of_scope_keywords)
@@ -284,10 +331,34 @@ async def ask_question(request: QA_Request, current_user: dict = Depends(get_cur
         if not all_items:
             all_items = search_relevant_items(request.question, request.invoice_id, user_id=int(user_id))
             
-        analytics_str = build_invoice_analytics_context(all_items)
+        inv_type = str(invoice.get("invoice_type") or "").strip()
+        is_doc_form = (
+            inv_type == "Document/Form"
+            or (
+                float(invoice.get("total_amount") or 0.0) <= 0
+                and len(all_items) > 0
+                and all(float(i.get("total_price") or 0.0) <= 0 for i in all_items)
+            )
+        )
+        analytics_str = build_invoice_analytics_context(all_items, invoice_type="Document/Form" if is_doc_form else inv_type)
         tax_val = float(invoice.get("tax_amount") or 0.0)
 
-        context = f"""
+        if is_doc_form:
+            context = f"""
+Thông tin tổng quan Tài liệu / Biểu mẫu (Dataset FUNSD - Chunk Cha):
+- Phân loại chứng từ: Tài liệu / Biểu mẫu có cấu trúc (Document/Form)
+- Tiêu đề tài liệu / Tổ chức phát hành: {invoice.get('store_name')}
+- Địa chỉ / Đơn vị / Nguồn / Người đăng ký: {invoice.get('store_address')}
+- Ngày tài liệu / Ngày đăng ký: {invoice.get('date')}
+
+Chi tiết các trường thông tin (Key - Value) trích xuất trên tài liệu / biểu mẫu (Chunk Con):
+{analytics_str}
+
+Nội dung OCR & toàn bộ chi tiết trên mặt tài liệu / biểu mẫu (bao gồm các trường Key-Value, ô Checkbox [X], bảng biểu, chữ viết tay, chữ ký và con dấu):
+{invoice.get('raw_text')}
+"""
+        else:
+            context = f"""
 Thông tin tổng quan hóa đơn (Chunk Cha):
 - Tên cửa hàng: {invoice.get('store_name')}
 - Địa chỉ: {invoice.get('store_address')}
@@ -302,16 +373,18 @@ Nội dung OCR & chi tiết in trên mặt hóa đơn (bao gồm Mã số thuế
 {invoice.get('raw_text')}
 """
         
-        prompt = f"""Bạn là một trợ lý kế toán AI thông minh. Dựa vào hình ảnh hóa đơn gốc đính kèm (nếu có) kết hợp với thông tin dữ liệu trích xuất dưới đây, hãy trả lời câu hỏi của người dùng một cách chính xác tuyệt đối bằng tiếng Việt.
+        prompt = f"""Bạn là một trợ lý Document AI thông minh, hỗ trợ hỏi đáp chính xác cả Hóa đơn mua bán (SROIE) lẫn Tài liệu / Biểu mẫu có cấu trúc (FUNSD). Dựa vào HÌNH ẢNH CHỨNG TỪ GỐC ĐÍNH KÈM (nếu có) kết hợp với thông tin dữ liệu trích xuất dưới đây, hãy trả lời câu hỏi của người dùng một cách chính xác tuyệt đối bằng tiếng Việt.
 
 {context}
 
 QUY TẮC TRẢ LỜI BẮT BUỘC (TUÂN THỦ TUYỆT ĐỐI):
 1. ĐỊNH DẠNG MARKDOWN SẮC NÉT, DỄ ĐỌC:
    - Viết câu trả lời tự nhiên, mạch lạc, rõ ràng.
-   - Sử dụng cú pháp **in đậm** cho các số tiền, tổng cộng, số lượng, tên mặt hàng và thông tin quan trọng.
-   - Sử dụng danh sách gạch đầu dòng `- ` khi liệt kê nhiều sản phẩm hoặc nhiều thông tin.
-2. ĐỘ CHÍNH XÁC SỐ LIỆU & ĐỐI CHIẾU HÌNH ẢNH 100%:
+   - Sử dụng cú pháp **in đậm** cho các số tiền, tổng cộng, số lượng, tên mặt hàng, nhãn trường (Key), giá trị (Value) và thông tin quan trọng.
+   - Sử dụng danh sách gạch đầu dòng `- ` khi liệt kê nhiều sản phẩm hoặc nhiều trường thông tin.
+2. ĐỐI VỚI TÀI LIỆU / BIỂU MẪU CÓ CẤU TRÚC (FUNSD - Document/Form):
+   - Khi người dùng hỏi về thông tin trên tài liệu/biểu mẫu (như: *Người đăng ký/Người thực hiện/Investigator tên gì? Ngày đăng ký/Ngày thử nghiệm là ngày nào? Địa chỉ/Đơn vị/Nguồn (Source) ghi trong tài liệu là gì? Hợp chất/Compound hoặc chủ đề là gì? Ô Checkbox nào được đánh dấu X hoặc chọn? Chữ ký của ai? Tài liệu này có những thông tin chính nào?*), hãy đối chiếu trực tiếp cả "DANH SÁCH CÁC TRƯỜNG THÔNG TIN (KEY - VALUE)", phần "Nội dung OCR" lẫn HÌNH ẢNH TÀI LIỆU ĐÍNH KÈM để trả lời đầy đủ, chính xác từng chi tiết.
+3. ĐỐI VỚI HÓA ĐƠN MUA HÀNG (SROIE):
    - Khi người dùng hỏi về tổng số lượng và tổng tiền của một mặt hàng xuất hiện ở nhiều dòng trên hóa đơn, BẮT BUỘC lấy đúng số liệu đã cộng gộp tại mục "2. BẢNG THỐNG KÊ SAU KHI GỘP CÁC DÒNG TRÙNG TÊN".
    - Khi người dùng hỏi số dòng hàng (line items), số loại sản phẩm khác nhau (unique products) và tổng số lượng đơn vị hàng hóa, BẮT BUỘC trả lời đúng theo mục "3. CHỈ SỐ THỐNG KÊ TỔNG HỢP CHÍNH XÁC 100%".
    - Khi người dùng hỏi nếu gộp các dòng trùng tên lại thì chi nhiều tiền nhất cho loại sản phẩm nào, BẮT BUỘC trả lời đúng sản phẩm hạng 1 tại mục "2. BẢNG THỐNG KÊ SAU KHI GỘP CÁC DÒNG TRÙNG TÊN" và mục "3. CHỈ SỐ THỐNG KÊ TỔNG HỢP CHÍNH XÁC 100%".
@@ -415,7 +488,9 @@ CHỈ TRẢ VỀ CÁC TỪ KHÓA, CÁCH NHAU BẰNG DẤU PHẨY. Tuyệt đối
         
         is_item_query = any(w in _remove_diacritics(request.question) for w in [
             "mon", "san pham", "hang hoa", "an gi", "uong gi", "do an", "thuc uong", 
-            "dat nhat", "re nhat", "it nhat", "nhieu nhat", "gia", "tien", "mua gi"
+            "dat nhat", "re nhat", "it nhat", "nhieu nhat", "gia", "tien", "mua gi",
+            "tai lieu", "bieu mau", "phieu", "don", "dang ky", "thong tin", "nguoi",
+            "truong", "muc", "checkbox", "compound", "investigator", "source"
         ])
         if is_item_query or question_type in ("compare", "time"):
             # Luôn lấy danh sách đầy đủ các món hàng từ các hóa đơn chưa bị xóa
@@ -446,9 +521,10 @@ CHỈ TRẢ VỀ CÁC TỪ KHÓA, CÁCH NHAU BẰNG DẤU PHẨY. Tuyệt đối
         
         for idx, inv in enumerate(relevant_invoices):
             store_name = inv.get('store_name')
-            store_name_display = store_name if store_name and store_name.strip() else "Không rõ tên cửa hàng"
+            store_name_display = store_name if store_name and store_name.strip() else "Không rõ tên cửa hàng / tiêu đề"
             store_address = inv.get('store_address')
-            store_address_display = store_address.strip() if store_address and store_address.strip() else "Không rõ địa chỉ"
+            store_address_display = store_address.strip() if store_address and store_address.strip() else "Không rõ địa chỉ / đơn vị"
+            inv_type = inv.get('invoice_type') or 'Other'
             
             upload_ts = int(inv.get('_additional', {}).get('creationTimeUnix', 0)) / 1000
             upload_str = datetime.datetime.fromtimestamp(upload_ts).strftime('%Y-%m-%d %H:%M:%S') if upload_ts > 0 else "Không rõ"
@@ -456,28 +532,38 @@ CHỈ TRẢ VỀ CÁC TỪ KHÓA, CÁCH NHAU BẰNG DẤU PHẨY. Tuyệt đối
             order_note = f" [Vị trí {idx+1} - {'mới nhất' if idx == 0 and not is_oldest else 'cũ nhất' if idx == 0 and is_oldest else ''}]" if question_type == "time" else ""
             raw_t = repr(inv.get('raw_text', ''))
             tax_amt = float(inv.get('tax_amount') or 0.0)
-            context_str += (
-                f"- Hóa đơn {inv.get('invoice_id')}: Quán {store_name_display}, Địa chỉ: '{store_address_display}', "
-                f"ngày mua {inv.get('date')}, tải lên lúc {upload_str}, tổng tiền {inv.get('total_amount')}đ, "
-                f"Tiền thuế GTGT (VAT): {tax_amt:,.0f}đ{order_note}. Nội dung OCR thô: {raw_t}\n"
-            )
+            if inv_type == "Document/Form":
+                context_str += (
+                    f"- Tài liệu/Biểu mẫu (FUNSD) {inv.get('invoice_id')}: Tiêu đề '{store_name_display}', "
+                    f"Đơn vị/Địa chỉ/Người đăng ký: '{store_address_display}', ngày tài liệu {inv.get('date')}, "
+                    f"tải lên lúc {upload_str}{order_note}. Nội dung OCR thô: {raw_t}\n"
+                )
+            else:
+                context_str += (
+                    f"- Hóa đơn ({inv_type}) {inv.get('invoice_id')}: Quán {store_name_display}, Địa chỉ: '{store_address_display}', "
+                    f"ngày mua {inv.get('date')}, tải lên lúc {upload_str}, tổng tiền {inv.get('total_amount')}đ, "
+                    f"Tiền thuế GTGT (VAT): {tax_amt:,.0f}đ{order_note}. Nội dung OCR thô: {raw_t}\n"
+                )
             
-        context_str += "\nDỮ LIỆU CHI TIẾT CÁC MÓN HÀNG ĐÃ MUA (ĐÃ SẮP XẾP THEO GIÁ TIỀN TỪ CAO XUỐNG THẤP):\n"
+        context_str += "\nDỮ LIỆU CHI TIẾT CÁC MÓN HÀNG (SROIE) VÀ TRƯỜNG THÔNG TIN TÀI LIỆU (FUNSD):\n"
         if relevant_items:
             for item in relevant_items:
                 store = item.get('store_name', '')
                 date = item.get('date', '')
                 price = float(item.get('total_price', 0.0) or item.get('unit_price', 0.0) or 0.0)
                 unit_p = float(item.get('unit_price', 0.0) or price)
-                store_info = f", Quán: {store}" if store else ""
+                store_info = f", Chứng từ: {store}" if store else ""
                 date_info = f", Ngày: {date}" if date else ""
-                context_str += f"- Món: '{item.get('item_name')}' | Đơn giá: {unit_p:,.0f}đ | Thành tiền: {price:,.0f}đ (Số lượng: {item.get('quantity', 1)}{store_info}{date_info})\n"
+                if price <= 0 and unit_p <= 0:
+                    context_str += f"- Trường thông tin (Key-Value): '{item.get('item_name')}' ({store_info.lstrip(', ')}{date_info})\n"
+                else:
+                    context_str += f"- Món: '{item.get('item_name')}' | Đơn giá: {unit_p:,.0f}đ | Thành tiền: {price:,.0f}đ (Số lượng: {item.get('quantity', 1)}{store_info}{date_info})\n"
             context_str += "\nTHỐNG KÊ GỘP DÒNG TRÙNG TÊN & SỐ LƯỢNG:\n" + build_invoice_analytics_context(relevant_items) + "\n"
         else:
-            context_str += "- Hiện tại không có dữ liệu món hàng cụ thể.\n"
+            context_str += "- Hiện tại không có dữ liệu món hàng / trường thông tin cụ thể.\n"
         
         current_time_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        prompt = f"""Bạn là một trợ lý AI thông minh chuyên phân tích dữ liệu hóa đơn kế toán.
+        prompt = f"""Bạn là một trợ lý Document AI thông minh chuyên phân tích dữ liệu Hóa đơn kế toán (SROIE) và Tài liệu / Biểu mẫu có cấu trúc (FUNSD).
 Thời gian hiện tại của hệ thống là: {current_time_str}.
 LƯU Ý QUAN TRỌNG: 
 - Nếu người dùng hỏi các câu như "nãy giờ", "vừa xong", "gần đây", hãy so sánh "thời gian tải lên" (import time) của các hóa đơn với thời gian hiện tại để lọc ra các hóa đơn mới được tải lên trong vòng vài tiếng đổ lại.

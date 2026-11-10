@@ -4,8 +4,8 @@ const translations = {
   vi: {
     // Sidebar
     overview: 'Tổng quan',
-    scan: 'Quét hóa đơn',
-    history: 'Lịch sử hóa đơn',
+    scan: 'Quét hóa đơn & tài liệu',
+    history: 'Lịch sử hóa đơn & tài liệu',
     trash: 'Lịch sử xóa',
     admin_portal: 'Trang Quản Trị',
     ai_chat: 'Hỏi AI',
@@ -100,8 +100,8 @@ const translations = {
   en: {
     // Sidebar
     overview: 'Dashboard',
-    scan: 'Scan Invoice',
-    history: 'Invoice History',
+    scan: 'Scan Invoices & Documents',
+    history: 'Invoice & Document History',
     trash: 'Trash / Deleted',
     admin_portal: 'Admin Portal',
     ai_chat: 'Ask AI',

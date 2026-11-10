@@ -295,20 +295,36 @@ export default function AIChat() {
     return Number(val).toLocaleString('vi-VN') + ' đ';
   };
 
+  const isSelectedDocForm =
+    selectedDetail?.invoice_type === 'Document/Form' ||
+    (currentInvoiceId &&
+      Number(selectedDetail?.total_amount || 0) === 0 &&
+      Array.isArray(selectedDetail?.items) &&
+      selectedDetail.items.length > 0 &&
+      selectedDetail.items.every((it) => Number(it.total_price || 0) === 0));
+
   const quickQuestions = currentInvoiceId
-    ? [
-      'Tổng thanh toán của hóa đơn này là bao nhiêu?',
-      'Hóa đơn gồm những sản phẩm nào?',
-      'Tiền thuế GTGT (VAT) là bao nhiêu?',
-      'Mã số thuế và địa chỉ đơn vị bán hàng?',
-      'Mặt hàng nào có giá trị cao nhất?',
-    ]
+    ? isSelectedDocForm
+      ? [
+          'Tài liệu này có những thông tin chính nào?',
+          'Người đăng ký / Người thực hiện trong tài liệu tên là gì?',
+          'Ngày tháng được ghi trong tài liệu là ngày nào?',
+          'Địa chỉ hoặc đơn vị/nguồn trong tài liệu là gì?',
+          'Trong biểu mẫu có những mục nào được đánh dấu chọn (X)?',
+        ]
+      : [
+          'Tổng thanh toán của hóa đơn này là bao nhiêu?',
+          'Hóa đơn gồm những sản phẩm nào?',
+          'Tiền thuế GTGT (VAT) là bao nhiêu?',
+          'Mã số thuế và địa chỉ đơn vị bán hàng?',
+          'Mặt hàng nào có giá trị cao nhất?',
+        ]
     : [
-      'Tổng chi tiêu của tôi là bao nhiêu?',
-      'Tôi có bao nhiêu hóa đơn?',
-      'Hóa đơn nào có giá trị cao nhất?',
-      'Thống kê chi tiêu theo từng cửa hàng?',
-    ];
+        'Tổng chi tiêu của tôi là bao nhiêu?',
+        'Tôi có bao nhiêu hóa đơn?',
+        'Hóa đơn nào có giá trị cao nhất?',
+        'Thống kê chi tiêu theo từng cửa hàng?',
+      ];
 
   const receiptImgUrl = getImageUrl(selectedDetail?.image_path, selectedDetail?.invoice_id || currentInvoiceId);
   const totalSpendAll = invoices.reduce((acc, inv) => acc + (Number(inv.total_amount) || 0), 0);
@@ -323,11 +339,11 @@ export default function AIChat() {
           </div>
           <div>
             <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>Trợ lý Hỏi Đáp Hóa Đơn AI</span>
+              <span>Trợ lý Hỏi Đáp Hóa Đơn & Tài Liệu AI</span>
               <span className="chat-ai-live-badge">Trực tuyến</span>
             </h2>
             <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', margin: 0 }}>
-              Đối chiếu trực tiếp chứng từ gốc và phân tích dữ liệu bằng trí tuệ nhân tạo
+              Đối chiếu trực tiếp chứng từ gốc (SROIE / FUNSD) và phân tích dữ liệu bằng trí tuệ nhân tạo
             </p>
           </div>
         </div>
@@ -479,13 +495,18 @@ export default function AIChat() {
               {/* 3. Quick Metadata Summary Card */}
               <div className="ai-summary-card">
                 <div className="ai-summary-header">
-                  <h4>Tóm tắt thông tin hóa đơn</h4>
+                  <h4>
+                    {isSelectedDocForm
+                      ? 'Tóm tắt thông tin tài liệu / biểu mẫu'
+                      : 'Tóm tắt thông tin hóa đơn'}
+                  </h4>
                   <span className="ai-summary-id">#{currentInvoiceId.slice(-8)}</span>
                 </div>
                 <div className="ai-summary-grid">
                   <div className="ai-summary-item">
                     <span className="ai-sum-label">
-                      <Store size={14} strokeWidth={1.75} /> Cửa hàng
+                      <Store size={14} strokeWidth={1.75} />{' '}
+                      {isSelectedDocForm ? 'Tiêu đề tài liệu' : 'Cửa hàng'}
                     </span>
                     <strong className="ai-sum-val" title={selectedDetail.store_name}>
                       {selectedDetail.store_name || 'Chưa xác định'}
@@ -493,24 +514,31 @@ export default function AIChat() {
                   </div>
                   <div className="ai-summary-item">
                     <span className="ai-sum-label">
-                      <Calendar size={14} strokeWidth={1.75} /> Ngày xuất
+                      <Calendar size={14} strokeWidth={1.75} />{' '}
+                      {isSelectedDocForm ? 'Ngày tài liệu' : 'Ngày xuất'}
                     </span>
                     <strong className="ai-sum-val">{selectedDetail.date || 'Chưa rõ'}</strong>
                   </div>
                   <div className="ai-summary-item">
                     <span className="ai-sum-label">
-                      <Wallet size={14} strokeWidth={1.75} /> Tổng tiền
+                      <Wallet size={14} strokeWidth={1.75} />{' '}
+                      {isSelectedDocForm ? 'Phân loại' : 'Tổng tiền'}
                     </span>
                     <strong className="ai-sum-val highlight">
-                      {formatCurrency(selectedDetail.total_amount)}
+                      {isSelectedDocForm
+                        ? 'Biểu mẫu (FUNSD)'
+                        : formatCurrency(selectedDetail.total_amount)}
                     </strong>
                   </div>
                   <div className="ai-summary-item">
                     <span className="ai-sum-label">
-                      <Percent size={14} strokeWidth={1.75} /> Thuế GTGT
+                      <Percent size={14} strokeWidth={1.75} />{' '}
+                      {isSelectedDocForm ? 'Số trường dữ liệu' : 'Thuế GTGT'}
                     </span>
                     <strong className="ai-sum-val">
-                      {selectedDetail.tax_amount
+                      {isSelectedDocForm
+                        ? `${(selectedDetail.items || []).length} trường`
+                        : selectedDetail.tax_amount
                         ? formatCurrency(selectedDetail.tax_amount)
                         : 'Đã gồm / 0 đ'}
                     </strong>

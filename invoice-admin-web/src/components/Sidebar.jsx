@@ -8,7 +8,7 @@ import {
 const menuItems = [
   { path: '/dashboard', name: 'Tổng quan', icon: <LayoutDashboard size={20} /> },
   { path: '/users', name: 'Quản lý tài khoản', icon: <User size={20} /> },
-  { path: '/invoices', name: 'Quản lý hóa đơn', icon: <ReceiptText size={20} /> },
+  { path: '/invoices', name: 'Quản lý hóa đơn & tài liệu', icon: <ReceiptText size={20} /> },
   { path: '/errors', name: 'Xử lý lỗi khách hàng', icon: <MessageCircleQuestion size={20} /> },
   { path: '/backup', name: 'Sao lưu / Khôi phục', icon: <Database size={20} /> },
 ];

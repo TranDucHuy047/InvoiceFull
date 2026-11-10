@@ -44,8 +44,13 @@ C. QUY TẮC KHI CHỨNG TỪ LÀ HÓA ĐƠN MUA HÀNG / BIÊN LAI (chuẩn SROI
       - TUYỆT ĐỐI KHÔNG lấy các dòng thông tin phụ như "PASSWORD WIFI", "WIFI", "Thu ngân", "Phiếu tính tiền", "Hóa đơn bán hàng", "Mã xác thực" làm tên cửa hàng.
    2. store_address: Địa chỉ chi nhánh/cửa hàng in ở đầu hóa đơn. Đọc kỹ từ hình ảnh để khôi phục đúng số nhà, tên đường, quận/huyện, tỉnh/thành phố. Nếu không có địa chỉ thì trả về "".
    3. date: Ngày xuất hóa đơn theo định dạng chuẩn DD/MM/YYYY (ví dụ: "28/02/2019", "10/09/2026"). Nếu năm chỉ có 2 chữ số (YY) thì chuẩn hóa thành 4 chữ số (20YY hoặc 19YY phù hợp).
-   4. total_amount: Tổng số tiền thanh toán cuối cùng trên hóa đơn (kiểu số thực float). Đối chiếu kỹ với tổng thành tiền của các dòng hàng và dòng "TỔNG CỘNG" / "THÀNH TIỀN" trên ảnh.
-   5. tax_amount: Tổng tiền thuế GTGT / VAT ghi trên hóa đơn (kiểu số thực float). Nếu không ghi tách biệt thì để 0.0.
+   4. total_amount: Tổng số tiền thanh toán cuối cùng trên hóa đơn (kiểu số thực float). Đối chiếu kỹ với tổng thành tiền của các dòng hàng và dòng "TỔNG CỘNG" / "THÀNH TIỀN" / "TỔNG THANH TOÁN" trên ảnh.
+   5. tax_amount: Tổng tiền thuế GTGT / VAT trên hóa đơn (kiểu số thực float, làm tròn về số nguyên VNĐ):
+      - Trường hợp 1: Trên hóa đơn có in sẵn số tiền thuế GTGT / VAT bằng tiền -> lấy đúng số tiền đó.
+      - Trường hợp 2: Trên hóa đơn KHÔNG in sẵn số tiền thuế bằng VNĐ mà chỉ ghi mức phần trăm thuế suất trên từng dòng hàng hoặc cuối phiếu (ví dụ: "VAT 8%", "VAT 10%", "GTGT 8%", "VAT 5%"...) kèm dòng "GIÁ TRÊN ĐÃ BAO GỒM THUẾ GTGT" (như hóa đơn siêu thị AEON, WinMart, Co.opmart...) -> BẮT BUỘC tự động tính ra số tiền thuế GTGT theo công thức giá đã gồm thuế:
+        tax_amount = round(total_amount * vat_rate / (100 + vat_rate))
+        (Ví dụ: total_amount = 48800 và các mặt hàng ghi VAT 8% -> tax_amount = round(48800 * 8 / 108) = 3615.0).
+      - Trường hợp 3: Nếu hóa đơn hoàn toàn không đề cập đến VAT/GTGT thì mới để 0.0.
    6. items: Danh sách tất cả các dòng hàng hóa/dịch vụ xuất hiện trên hóa đơn theo cấu trúc:
       [{{"item_name": "Tên sản phẩm", "unit": "Đơn vị tính (Chai, Lon, Ly, Cái, Hộp, Kg, Gói, Phần... hoặc \"\" nếu không rõ)", "quantity": 1, "unit_price": 0.0, "total_price": 0.0}}]
       - Trên nhiều hóa đơn siêu thị/nhà hàng, cột ngoài cùng bên trái là cột "VAT" (mã nhóm thuế, ví dụ số 2) hoặc "STT". TUYỆT ĐỐI KHÔNG nhầm cột mã VAT hoặc STT ở đầu dòng thành số lượng (quantity) của sản phẩm!
@@ -218,6 +223,50 @@ def normalize_invoice_extracted_data(parsed_json: dict, raw_text: str) -> dict:
         tax_amount = float(round(float(parsed_json.get("tax_amount", 0.0) or 0.0)))
     except (ValueError, TypeError):
         tax_amount = 0.0
+
+    # Nếu AI trả về tax_amount == 0 nhưng trên mặt hóa đơn có ghi mức thuế suất (VD: "VAT 8%", "VAT 10%", "GTGT 8%")
+    if tax_amount <= 0 and total_amount > 0:
+        has_vat_mention = any(
+            kw in combined_lower
+            for kw in ["vat", "gtgt", "thuế", "thue"]
+        )
+        vat_rates = [
+            int(m)
+            for m in re.findall(r"(?:vat|gtgt|thuế\s*suất|thue\s*suat)?\s*[:\-]?\s*(5|8|10)\s*%", combined_lower)
+            if has_vat_mention
+        ]
+        is_inclusive = (
+            any(
+                kw in combined_lower
+                for kw in [
+                    "đã bao gồm thuế",
+                    "da bao gom thue",
+                    "đã gồm thuế",
+                    "da gom thue",
+                    "bao gồm gtgt",
+                    "bao gom gtgt",
+                    "bao gồm vat",
+                    "bao gom vat",
+                ]
+            )
+            or (items_sum > 0 and abs(items_sum - total_amount) <= 10.0)
+        )
+        if not vat_rates and (
+            "đã bao gồm thuế" in combined_lower
+            or "da bao gom thue" in combined_lower
+            or "aeon" in str(parsed_json.get("store_name") or "").lower()
+        ):
+            vat_rates = [8]
+            is_inclusive = True
+
+        if vat_rates:
+            # Lấy mức thuế suất xuất hiện phổ biến nhất trên hóa đơn
+            dominant_rate = max(set(vat_rates), key=vat_rates.count)
+            if is_inclusive:
+                tax_amount = float(round(total_amount * dominant_rate / (100.0 + dominant_rate)))
+            else:
+                tax_amount = float(round(total_amount * dominant_rate / 100.0))
+
     parsed_json["tax_amount"] = max(0.0, tax_amount)
     parsed_json["subtotal"] = float(round(max(0.0, total_amount - parsed_json["tax_amount"])))
 

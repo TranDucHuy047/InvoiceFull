@@ -272,20 +272,14 @@ async def permanent_delete_invoice_api(invoice_id: str, current_user: dict = Dep
     return {"status": 200, "message": f"Đã xóa vĩnh viễn hóa đơn {invoice_id}."}
 
 
-@router.put("/api/invoices/{invoice_id}", tags=["Invoice CRUD"], summary="Cập nhật kết quả OCR/AI trước khi submit")
-@router.post("/api/invoices/{invoice_id}/submit", tags=["Invoice CRUD"], summary="Xác nhận và khóa hóa đơn")
+@router.put("/api/invoices/{invoice_id}", tags=["Invoice CRUD"], summary="Cập nhật kết quả OCR/AI hoặc chỉnh sửa hóa đơn/tài liệu")
+@router.post("/api/invoices/{invoice_id}/submit", tags=["Invoice CRUD"], summary="Xác nhận và lưu hóa đơn/tài liệu")
 async def update_invoice_api(invoice_id: str, updated_data: InvoiceData, current_user: dict = Depends(get_current_user)):
     """
-    Cho phép người dùng kiểm tra và sửa lại thông tin ở bước Review trước khi Submit.
-    Nếu hóa đơn đã được submit trước đó, KHÔNG THỂ chỉnh sửa nữa (trả về lỗi 400).
-    Khi submit thành công, hóa đơn được khóa vĩnh viễn (is_submitted = True).
+    Cho phép người dùng kiểm tra, chỉnh sửa và xóa bớt các trường thông tin / mặt hàng
+    ở cả bước Review lẫn trong trang Chi tiết chứng từ.
     """
     existing = get_invoice_by_id(invoice_id, user_id=current_user["id"])
-    if existing and existing.get("is_submitted") is True:
-        raise HTTPException(
-            status_code=400, 
-            detail="Hóa đơn này đã được xác nhận (submit) và không thể chỉnh sửa nữa."
-        )
 
     # Làm tròn tiền tệ VNĐ tự động để không bắt user phải làm tròn tay
     updated_data.total_amount = float(round(float(updated_data.total_amount or 0.0)))
@@ -297,28 +291,29 @@ async def update_invoice_api(invoice_id: str, updated_data: InvoiceData, current
         updated_data.tax_amount = 0.0
     updated_data.subtotal = float(round(max(0.0, updated_data.total_amount - updated_data.tax_amount)))
 
-    # Kiểm tra trùng lặp với hóa đơn ĐÃ XÁC NHẬN khác khi submit
-    from database import client
-    dup_where = [
-        {"path": ["user_id"], "operator": "Equal", "valueNumber": current_user["id"]},
-        {"path": ["is_deleted"], "operator": "Equal", "valueBoolean": False},
-        {"path": ["is_submitted"], "operator": "Equal", "valueBoolean": True},
-        {"path": ["invoice_id"], "operator": "NotEqual", "valueString": invoice_id},
-        {"path": ["total_amount"], "operator": "Equal", "valueNumber": updated_data.total_amount}
-    ]
-    if updated_data.store_name and updated_data.store_name.strip():
-        dup_where.append({"path": ["store_name"], "operator": "Equal", "valueText": updated_data.store_name.strip()})
-    if updated_data.date and updated_data.date.strip():
-        dup_where.append({"path": ["date"], "operator": "Equal", "valueText": updated_data.date.strip()})
-        
-    dup_check = client.query.get("Invoice", ["invoice_id"]).with_where({"operator": "And", "operands": dup_where}).with_limit(1).do()
-    existing_dups = (dup_check.get("data") or {}).get("Get", {}).get("Invoice") or []
-    if existing_dups:
-        dup_id = existing_dups[0].get("invoice_id", "")
-        raise HTTPException(
-            status_code=400,
-            detail=f"Hóa đơn này đã tồn tại rồi! (Trùng thông tin với mã hóa đơn: {dup_id})"
-        )
+    # Kiểm tra trùng lặp với hóa đơn ĐÃ XÁC NHẬN khác khi submit lần đầu
+    if not (existing and existing.get("is_submitted") is True):
+        from database import client
+        dup_where = [
+            {"path": ["user_id"], "operator": "Equal", "valueNumber": current_user["id"]},
+            {"path": ["is_deleted"], "operator": "Equal", "valueBoolean": False},
+            {"path": ["is_submitted"], "operator": "Equal", "valueBoolean": True},
+            {"path": ["invoice_id"], "operator": "NotEqual", "valueString": invoice_id},
+            {"path": ["total_amount"], "operator": "Equal", "valueNumber": updated_data.total_amount}
+        ]
+        if updated_data.store_name and updated_data.store_name.strip():
+            dup_where.append({"path": ["store_name"], "operator": "Equal", "valueText": updated_data.store_name.strip()})
+        if updated_data.date and updated_data.date.strip():
+            dup_where.append({"path": ["date"], "operator": "Equal", "valueText": updated_data.date.strip()})
+            
+        dup_check = client.query.get("Invoice", ["invoice_id"]).with_where({"operator": "And", "operands": dup_where}).with_limit(1).do()
+        existing_dups = (dup_check.get("data") or {}).get("Get", {}).get("Invoice") or []
+        if existing_dups:
+            dup_id = existing_dups[0].get("invoice_id", "")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Chứng từ này đã tồn tại rồi! (Trùng thông tin với mã: {dup_id})"
+            )
 
     updated_data.invoice_id = invoice_id
     updated_data.is_submitted = True

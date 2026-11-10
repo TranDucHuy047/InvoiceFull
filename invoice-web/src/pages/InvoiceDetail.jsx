@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getInvoiceDetail, deleteInvoice } from '../services/api';
+import { getInvoiceDetail, deleteInvoice, updateInvoice } from '../services/api';
 import { useLanguage } from '../contexts/LanguageContext';
 import {
   ArrowLeft,
@@ -17,6 +17,9 @@ import {
   CheckCircle2,
   AlertTriangle,
   X,
+  Edit3,
+  Plus,
+  Save,
 } from 'lucide-react';
 
 export default function InvoiceDetail() {
@@ -28,6 +31,10 @@ export default function InvoiceDetail() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteReason, setDeleteReason] = useState('Hóa đơn bị trùng lặp');
   const [toast, setToast] = useState(null);
+  const [isEditingFields, setIsEditingFields] = useState(false);
+  const [editableItems, setEditableItems] = useState([]);
+  const [savingFields, setSavingFields] = useState(false);
+  const [confirmRemoveFieldIdx, setConfirmRemoveFieldIdx] = useState(null);
 
   const [activeTab, setActiveTab] = useState(() => {
     return localStorage.getItem('app_auto_switch_text') === 'true' ? 'raw' : 'structured';
@@ -43,10 +50,97 @@ export default function InvoiceDetail() {
       const res = await getInvoiceDetail(id);
       const data = res.data?.data || res.data;
       setInvoice(data);
+      setEditableItems(
+        Array.isArray(data?.items)
+          ? data.items.map((it) => ({
+              name: it.item_name || it.name || '',
+              item_name: it.item_name || it.name || '',
+              unit: it.unit || '',
+              quantity: Number(it.quantity) || 1,
+              unit_price: Math.round(Number(it.unit_price) || 0),
+              total_price: Math.round(Number(it.total_price) || 0),
+            }))
+          : []
+      );
     } catch (err) {
       console.error('Lỗi tải chi tiết hóa đơn:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleEditItemChange = (idx, value) => {
+    setEditableItems((prev) =>
+      prev.map((it, i) => (i === idx ? { ...it, name: value, item_name: value } : it))
+    );
+  };
+
+  const handleAddEditableField = () => {
+    setEditableItems((prev) => [
+      ...prev,
+      { name: '', item_name: '', unit: '', quantity: 1, unit_price: 0, total_price: 0 },
+    ]);
+  };
+
+  const executeRemoveEditableField = async () => {
+    if (confirmRemoveFieldIdx === null) return;
+    const idxToRemove = confirmRemoveFieldIdx;
+    setConfirmRemoveFieldIdx(null);
+    const nextItems = editableItems.filter((_, idx) => idx !== idxToRemove);
+    setEditableItems(nextItems);
+
+    // Nếu người dùng bấm xóa trực tiếp ngay cả khi chưa bật chế độ sửa, tự động lưu luôn
+    if (!isEditingFields && invoice) {
+      await saveUpdatedItemsToBackend(nextItems);
+    }
+  };
+
+  const saveUpdatedItemsToBackend = async (itemsToSave = editableItems) => {
+    if (!invoice) return;
+    const cleaned = itemsToSave
+      .map((it) => {
+        const cleanName = String(it.name || it.item_name || '').trim();
+        return {
+          name: cleanName,
+          item_name: cleanName,
+          unit: String(it.unit || '').trim(),
+          quantity: Math.max(1, Math.round(Number(it.quantity) || 1)),
+          unit_price: Math.round(Number(it.unit_price) || 0),
+          total_price: Math.round(Number(it.total_price) || 0),
+        };
+      })
+      .filter((it) => it.name !== '');
+
+    setSavingFields(true);
+    try {
+      const payload = {
+        invoice_id: invoice.invoice_id || id,
+        store_name: invoice.store_name || 'Chưa xác định',
+        store_address: invoice.store_address || '',
+        date: invoice.date || '',
+        invoice_type: invoice.invoice_type || 'Document/Form',
+        subtotal: Math.round(Number(invoice.subtotal) || 0),
+        tax_amount: Math.round(Number(invoice.tax_amount) || 0),
+        total_amount: Math.round(Number(invoice.total_amount) || 0),
+        items: cleaned,
+        raw_text: invoice.raw_text || '',
+        image_path: invoice.image_path || '',
+        is_submitted: true,
+      };
+      await updateInvoice(id, payload);
+      setInvoice((prev) => ({ ...prev, items: cleaned }));
+      setEditableItems(cleaned);
+      setIsEditingFields(false);
+      setToast({ msg: 'Đã cập nhật các trường thông tin thành công!', type: 'success' });
+      setTimeout(() => setToast(null), 3000);
+    } catch (err) {
+      setToast({
+        msg: err.response?.data?.detail || 'Không thể lưu thay đổi trường thông tin.',
+        type: 'error',
+      });
+      setTimeout(() => setToast(null), 3500);
+    } finally {
+      setSavingFields(false);
     }
   };
 
@@ -139,9 +233,13 @@ export default function InvoiceDetail() {
           <Lock size={20} strokeWidth={1.75} />
         </span>
         <div className="inv-status-info">
-          <span className="inv-status-title">Hóa đơn đã xác nhận &amp; lưu trữ cố định</span>
+          <span className="inv-status-title">
+            {isDocForm
+              ? 'Tài liệu / Biểu mẫu đã xác nhận & lưu trữ cố định'
+              : 'Hóa đơn đã xác nhận & lưu trữ cố định'}
+          </span>
           <span className="inv-status-desc">
-            Dữ liệu đã được khóa để đảm bảo tính toàn vẹn kế toán (Chỉ xem).
+            Dữ liệu đã được khóa để đảm bảo tính toàn vẹn lưu trữ (Chỉ xem).
           </span>
         </div>
       </div>
@@ -206,7 +304,7 @@ export default function InvoiceDetail() {
                     <td>{formatCurrency(invoice.tax_amount)}</td>
                   </tr>
                 )}
-                {(!isDocForm || Number(invoice.total_amount) > 0) && (
+                {!isDocForm && (
                   <tr className="total-row">
                     <td>{t('total_payment')}</td>
                     <td>{formatCurrency(invoice.total_amount)}</td>
@@ -217,24 +315,92 @@ export default function InvoiceDetail() {
           </div>
 
           {/* Products / Document Key-Value Fields */}
-          {items.length > 0 && (
+          {(items.length > 0 || isEditingFields) && (
             <div className="result-section">
-              <h3>
-                {isDocForm
-                  ? `Danh sách trường thông tin trên tài liệu (${items.length})`
-                  : `${t('products_count')} (${items.length})`}
-              </h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                <h3 style={{ margin: 0 }}>
+                  {isDocForm
+                    ? 'Các trường thông tin bóc tách'
+                    : `${t('products_count')} (${items.length})`}
+                </h3>
+                {isDocForm && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {isEditingFields ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          style={{ width: 'auto' }}
+                          onClick={handleAddEditableField}
+                          disabled={savingFields}
+                        >
+                          <Plus size={14} strokeWidth={1.75} />
+                          Thêm trường
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          style={{ width: 'auto' }}
+                          onClick={() => {
+                            setIsEditingFields(false);
+                            setEditableItems(
+                              (invoice.items || []).map((it) => ({
+                                name: it.item_name || it.name || '',
+                                item_name: it.item_name || it.name || '',
+                                unit: it.unit || '',
+                                quantity: Number(it.quantity) || 1,
+                                unit_price: Math.round(Number(it.unit_price) || 0),
+                                total_price: Math.round(Number(it.total_price) || 0),
+                              }))
+                            );
+                          }}
+                          disabled={savingFields}
+                        >
+                          Hủy
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          style={{ width: 'auto' }}
+                          onClick={() => saveUpdatedItemsToBackend(editableItems)}
+                          disabled={savingFields}
+                        >
+                          <Save size={14} strokeWidth={1.75} />
+                          {savingFields ? 'Đang lưu...' : 'Lưu thay đổi'}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        style={{ width: 'auto' }}
+                        onClick={() => setIsEditingFields(true)}
+                      >
+                        <Edit3 size={14} strokeWidth={1.75} />
+                        Chỉnh sửa / Xóa bớt trường
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
               {isDocForm ? (
                 <table className="products-table">
                   <thead>
                     <tr>
                       <th style={{ width: '8%', textAlign: 'center' }}>STT</th>
-                      <th style={{ width: '34%' }}>Trường thông tin</th>
-                      <th style={{ width: '58%' }}>Nội dung chi tiết</th>
+                      {isEditingFields ? (
+                        <th style={{ width: '82%' }}>Trường thông tin & Nội dung</th>
+                      ) : (
+                        <>
+                          <th style={{ width: '32%' }}>Trường thông tin</th>
+                          <th style={{ width: '52%' }}>Nội dung chi tiết</th>
+                        </>
+                      )}
+                      <th style={{ width: '8%', textAlign: 'center' }}>Xóa</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((item, idx) => {
+                    {(isEditingFields ? editableItems : items).map((item, idx) => {
                       const rawStr = String(item.item_name || item.name || '').trim();
                       const colonIdx = rawStr.indexOf(':');
                       const fieldKey =
@@ -246,10 +412,34 @@ export default function InvoiceDetail() {
                           <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
                             {idx + 1}
                           </td>
-                          <td style={{ fontWeight: 600, color: 'var(--primary)' }}>
-                            {fieldKey}
+                          {isEditingFields ? (
+                            <td>
+                              <input
+                                type="text"
+                                className="form-input form-input-sm"
+                                value={item.name}
+                                onChange={(e) => handleEditItemChange(idx, e.target.value)}
+                                placeholder="VD: Họ và tên: Nguyễn Văn A"
+                              />
+                            </td>
+                          ) : (
+                            <>
+                              <td style={{ fontWeight: 600, color: 'var(--primary)' }}>
+                                {fieldKey}
+                              </td>
+                              <td>{fieldVal || '—'}</td>
+                            </>
+                          )}
+                          <td style={{ textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              className="btn-icon-danger"
+                              onClick={() => setConfirmRemoveFieldIdx(idx)}
+                              title="Xóa trường thông tin này"
+                            >
+                              <Trash2 size={14} strokeWidth={1.75} />
+                            </button>
                           </td>
-                          <td>{fieldVal || '—'}</td>
                         </tr>
                       );
                     })}
@@ -358,6 +548,36 @@ export default function InvoiceDetail() {
           Báo cáo sai sót trên hóa đơn này
         </button>
       </div>
+
+      {/* Delete Field Confirmation Modal */}
+      {confirmRemoveFieldIdx !== null && (
+        <div className="modal-overlay" onClick={() => setConfirmRemoveFieldIdx(null)}>
+          <div className="modal" style={{ maxWidth: '420px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Xác nhận xóa trường thông tin</h3>
+              <button className="modal-close" onClick={() => setConfirmRemoveFieldIdx(null)}>
+                <X size={16} strokeWidth={1.75} />
+              </button>
+            </div>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '20px' }}>
+              Bạn có chắc chắn muốn xóa trường{' '}
+              <strong>
+                "{editableItems[confirmRemoveFieldIdx]?.name || `Trường #${confirmRemoveFieldIdx + 1}`}"
+              </strong>{' '}
+              khỏi tài liệu này không?
+            </p>
+            <div className="modal-actions">
+              <button className="btn btn-outline" onClick={() => setConfirmRemoveFieldIdx(null)}>
+                {t('cancel')}
+              </button>
+              <button className="btn btn-danger" onClick={executeRemoveEditableField}>
+                <Trash2 size={15} strokeWidth={1.75} />
+                Chắc chắn xóa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Modal */}
       {showDeleteModal && (

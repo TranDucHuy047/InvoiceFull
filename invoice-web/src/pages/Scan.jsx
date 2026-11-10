@@ -26,6 +26,42 @@ import {
 
 const SCAN_DRAFT_STORAGE_KEY = 'invoice_ai_scan_draft_v2';
 
+function inferVatFromRawText(rawText, totalAmount, itemsSum, storeName = '') {
+  const total = Math.round(Number(totalAmount) || 0);
+  if (total <= 0) return 0;
+  const lower = String(rawText || '').toLowerCase();
+  const storeLower = String(storeName || '').toLowerCase();
+  const hasVatKeyword =
+    lower.includes('vat') ||
+    lower.includes('gtgt') ||
+    lower.includes('thuế') ||
+    lower.includes('thue') ||
+    storeLower.includes('aeon');
+  if (!hasVatKeyword) return 0;
+
+  const rateMatches = [...lower.matchAll(/(?:vat|gtgt|thuế|thue)?\s*(5|8|10)\s*%/gi)];
+  let dominantRate = 0;
+  if (rateMatches.length > 0) {
+    const freq = {};
+    rateMatches.forEach((m) => {
+      const r = Number(m[1]);
+      freq[r] = (freq[r] || 0) + 1;
+    });
+    dominantRate = Number(
+      Object.keys(freq).sort((a, b) => freq[b] - freq[a])[0]
+    );
+  } else if (
+    lower.includes('đã bao gồm thuế') ||
+    lower.includes('da bao gom thue') ||
+    storeLower.includes('aeon')
+  ) {
+    dominantRate = 8;
+  }
+  if (!dominantRate) return 0;
+
+  return Math.round((total * dominantRate) / (100 + dominantRate));
+}
+
 // Bộ nhớ đệm cấp module (giữ sống tiến trình quét kể cả khi user chuyển sang tab khác)
 const scanRuntimeStore = {
   loading: false,
@@ -50,6 +86,29 @@ try {
       scanRuntimeStore.preview = parsed.preview || null;
       scanRuntimeStore.extractedInvoice = parsed.extractedInvoice || null;
       scanRuntimeStore.formData = parsed.formData || null;
+      if (
+        scanRuntimeStore.formData &&
+        scanRuntimeStore.formData.invoice_type !== 'Document/Form' &&
+        (Number(scanRuntimeStore.formData.tax_amount) || 0) <= 0 &&
+        (Number(scanRuntimeStore.formData.total_amount) || 0) > 0
+      ) {
+        const savedItemsSum = Array.isArray(scanRuntimeStore.formData.items)
+          ? scanRuntimeStore.formData.items.reduce((s, it) => s + (Number(it.total_price) || 0), 0)
+          : 0;
+        const inferredTax = inferVatFromRawText(
+          scanRuntimeStore.extractedInvoice?.raw_text,
+          scanRuntimeStore.formData.total_amount,
+          savedItemsSum,
+          scanRuntimeStore.formData.store_name || scanRuntimeStore.extractedInvoice?.store_name
+        );
+        if (inferredTax > 0) {
+          scanRuntimeStore.formData.tax_amount = inferredTax;
+          scanRuntimeStore.formData.subtotal = Math.max(
+            0,
+            Math.round(Number(scanRuntimeStore.formData.total_amount) - inferredTax)
+          );
+        }
+      }
       scanRuntimeStore.multiBills = Array.isArray(parsed.multiBills) ? parsed.multiBills : [];
       scanRuntimeStore.showMultiModal = Boolean(parsed.showMultiModal);
     }
@@ -86,27 +145,42 @@ function notifyRuntimeListeners() {
 }
 
 function buildFormDataFromInvoice(data) {
+  const invoiceType = data?.invoice_type || 'Other';
+  const isDocForm = invoiceType === 'Document/Form';
+  const mappedItems = Array.isArray(data?.items)
+    ? data.items.map((it) => {
+        const itemName = it.item_name || it.name || '';
+        return {
+          name: itemName,
+          item_name: itemName,
+          unit: it.unit || '',
+          quantity: Number(it.quantity) || 1,
+          unit_price: Math.round(Number(it.unit_price) || 0),
+          total_price: Math.round(Number(it.total_price) || 0),
+        };
+      })
+    : [];
+
+  const totalAmount = isDocForm ? 0 : Math.round(Number(data?.total_amount) || 0);
+  const itemsSum = mappedItems.reduce((acc, it) => acc + (Number(it.total_price) || 0), 0);
+  let taxAmount = isDocForm ? 0 : Math.round(Number(data?.tax_amount) || 0);
+  if (!isDocForm && taxAmount <= 0 && totalAmount > 0) {
+    taxAmount = inferVatFromRawText(data?.raw_text, totalAmount, itemsSum, data?.store_name);
+  }
+  let subtotal = isDocForm ? 0 : Math.round(Number(data?.subtotal) || 0);
+  if (!isDocForm && taxAmount > 0 && totalAmount > taxAmount && (subtotal <= 0 || subtotal === totalAmount)) {
+    subtotal = Math.max(0, totalAmount - taxAmount);
+  }
+
   return {
     store_name: data?.store_name || '',
     store_address: data?.store_address || '',
     date: data?.date || '',
-    invoice_type: data?.invoice_type || 'Other',
-    subtotal: Math.round(Number(data?.subtotal) || 0),
-    tax_amount: Math.round(Number(data?.tax_amount) || 0),
-    total_amount: Math.round(Number(data?.total_amount) || 0),
-    items: Array.isArray(data?.items)
-      ? data.items.map((it) => {
-          const itemName = it.item_name || it.name || '';
-          return {
-            name: itemName,
-            item_name: itemName,
-            unit: it.unit || '',
-            quantity: Number(it.quantity) || 1,
-            unit_price: Math.round(Number(it.unit_price) || 0),
-            total_price: Math.round(Number(it.total_price) || 0),
-          };
-        })
-      : [],
+    invoice_type: invoiceType,
+    subtotal,
+    tax_amount: taxAmount,
+    total_amount: totalAmount,
+    items: mappedItems,
   };
 }
 
@@ -148,6 +222,8 @@ export default function Scan() {
   // Confirmation modals for delete/reset actions
   const [confirmResetOpen, setConfirmResetOpen] = useState(false);
   const [confirmDeleteItemIdx, setConfirmDeleteItemIdx] = useState(null);
+  const [selectedItemIndices, setSelectedItemIndices] = useState([]);
+  const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false);
 
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
@@ -347,7 +423,7 @@ export default function Scan() {
       const tPrice = Number(it.total_price) || 0;
       if (!nameStr) {
         const msg = isDocForm
-          ? `Trường thông tin số ${i + 1} chưa nhập nội dung (Key: Value). Vui lòng điền thông tin hoặc xóa dòng trống!`
+          ? `Trường thông tin số ${i + 1} chưa nhập nội dung. Vui lòng điền thông tin hoặc xóa dòng trống!`
           : `Dòng sản phẩm số ${i + 1} chưa nhập "Tên mặt hàng". Vui lòng điền thông tin hoặc xóa dòng trống trước khi thao tác tiếp!`;
         setError(msg);
         showToast(msg, 'error');
@@ -366,10 +442,21 @@ export default function Scan() {
 
   // Handlers for editing form fields
   const handleFieldChange = (field, value) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+    setFormData((prev) => {
+      if (field === 'invoice_type' && value === 'Document/Form') {
+        return {
+          ...prev,
+          invoice_type: value,
+          subtotal: 0,
+          tax_amount: 0,
+          total_amount: 0,
+        };
+      }
+      return {
+        ...prev,
+        [field]: value,
+      };
+    });
   };
 
   const handleItemChange = (index, field, value) => {
@@ -421,11 +508,48 @@ export default function Scan() {
     if (confirmDeleteItemIdx === null) return;
     const idxToRemove = confirmDeleteItemIdx;
     setConfirmDeleteItemIdx(null);
+    setSelectedItemIndices((prev) =>
+      prev.filter((i) => i !== idxToRemove).map((i) => (i > idxToRemove ? i - 1 : i))
+    );
     setFormData((prev) => ({
       ...prev,
       items: prev.items.filter((_, idx) => idx !== idxToRemove),
     }));
-    showToast('Đã xóa dòng sản phẩm.');
+    showToast(
+      formData.invoice_type === 'Document/Form'
+        ? 'Đã xóa trường thông tin.'
+        : 'Đã xóa dòng sản phẩm.'
+    );
+  };
+
+  const handleToggleSelectItem = (idx) => {
+    setSelectedItemIndices((prev) =>
+      prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]
+    );
+  };
+
+  const handleToggleSelectAllItems = () => {
+    if (selectedItemIndices.length === formData.items.length && formData.items.length > 0) {
+      setSelectedItemIndices([]);
+    } else {
+      setSelectedItemIndices(formData.items.map((_, idx) => idx));
+    }
+  };
+
+  const executeBulkRemoveItems = () => {
+    if (selectedItemIndices.length === 0) return;
+    const removedCount = selectedItemIndices.length;
+    setConfirmBulkDeleteOpen(false);
+    setFormData((prev) => ({
+      ...prev,
+      items: prev.items.filter((_, idx) => !selectedItemIndices.includes(idx)),
+    }));
+    setSelectedItemIndices([]);
+    showToast(
+      formData.invoice_type === 'Document/Form'
+        ? `Đã xóa ${removedCount} trường thông tin đã chọn.`
+        : `Đã xóa ${removedCount} dòng sản phẩm đã chọn.`
+    );
   };
 
   // Tính lại tổng tiền chính xác từ các dòng mặt hàng (tự động xử lý cả HĐ đã gồm VAT và chưa gồm VAT)
@@ -623,7 +747,11 @@ export default function Scan() {
       scanRuntimeStore.showMultiModal = false;
       notifyRuntimeListeners();
 
-      showToast('Đã xác nhận và lưu hóa đơn thành công!');
+      showToast(
+        formData.invoice_type === 'Document/Form'
+          ? 'Đã xác nhận và lưu tài liệu thành công!'
+          : 'Đã xác nhận và lưu hóa đơn thành công!'
+      );
       setTimeout(() => {
         navigate(`/history/${savedId}`);
       }, 600);
@@ -930,10 +1058,10 @@ export default function Scan() {
               </div>
 
               {fileMeta && (
-                <div className="scan-selected-pill">
-                  <CheckCircle2 size={14} strokeWidth={1.75} style={{ color: 'var(--success)' }} />
-                  <span>
-                    Đã chọn: <strong>{fileMeta.name}</strong> ({(fileMeta.size / 1024).toFixed(1)} KB)
+                <div className="scan-selected-pill" title={`${fileMeta.name} (${(fileMeta.size / 1024).toFixed(1)} KB)`}>
+                  <CheckCircle2 size={14} strokeWidth={1.75} style={{ color: 'var(--success)', flexShrink: 0 }} />
+                  <span className="scan-file-name-wrap">
+                    Đã chọn: <strong className="scan-file-name">{fileMeta.name}</strong> ({(fileMeta.size / 1024).toFixed(1)} KB)
                   </span>
                 </div>
               )}
@@ -1012,10 +1140,12 @@ export default function Scan() {
 
                   <div className="scan-ready-footer">
                     <div className="scan-ready-meta">
-                      <strong>{fileMeta?.name || 'Ảnh hóa đơn'}</strong>
+                      <strong className="scan-file-name" title={fileMeta?.name || 'Ảnh chứng từ'}>
+                        {fileMeta?.name || 'Ảnh chứng từ'}
+                      </strong>
                       <span>
                         {fileMeta?.count > 1
-                          ? `Đã chọn ${fileMeta.count} hóa đơn`
+                          ? `Đã chọn ${fileMeta.count} chứng từ`
                           : 'Sẵn sàng phân tích bằng AI OCR'}
                       </span>
                     </div>
@@ -1115,10 +1245,13 @@ export default function Scan() {
                 </div>
 
                 {fileMeta && (
-                  <div className="scan-review-file-meta">
-                    <span>{fileMeta.name}</span>
-                    <span>•</span>
-                    <span>{(fileMeta.size / 1024).toFixed(1)} KB</span>
+                  <div
+                    className="scan-review-file-meta"
+                    title={`${fileMeta.name} • ${(fileMeta.size / 1024).toFixed(1)} KB`}
+                  >
+                    <span className="scan-file-name">{fileMeta.name}</span>
+                    <span style={{ flexShrink: 0 }}>•</span>
+                    <span style={{ flexShrink: 0 }}>{(fileMeta.size / 1024).toFixed(1)} KB</span>
                   </div>
                 )}
               </div>
@@ -1134,7 +1267,7 @@ export default function Scan() {
                     Thông tin chung
                   </h4>
                   <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                    Mã HĐ: #{extractedInvoice.invoice_id?.slice(-8)}
+                    {formData.invoice_type === 'Document/Form' ? 'Mã tài liệu' : 'Mã HĐ'}: #{extractedInvoice.invoice_id?.slice(-8)}
                   </span>
                 </div>
 
@@ -1193,7 +1326,10 @@ export default function Scan() {
                     />
                   </div>
 
-                  <div className="form-group">
+                  <div
+                    className="form-group"
+                    style={formData.invoice_type === 'Document/Form' ? { gridColumn: '1 / -1' } : undefined}
+                  >
                     <label>Phân loại chứng từ</label>
                     <select
                       className="form-input"
@@ -1209,37 +1345,52 @@ export default function Scan() {
                     </select>
                   </div>
 
-                  <div className="form-group">
-                    <label>Tiền thuế VAT (đ) — Tự động tính từ Backend</label>
-                    <input
-                      type="number"
-                      className="form-input"
-                      value={formData.tax_amount}
-                      onChange={(e) => handleFieldChange('tax_amount', e.target.value)}
-                      min="0"
-                      step="any"
-                    />
-                  </div>
+                  {formData.invoice_type !== 'Document/Form' && (
+                    <div className="form-group">
+                      <label>Tiền thuế VAT (đ) — Tự động tính từ Backend</label>
+                      <input
+                        type="number"
+                        className="form-input"
+                        value={formData.tax_amount}
+                        onChange={(e) => handleFieldChange('tax_amount', e.target.value)}
+                        min="0"
+                        step="any"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Line Items / Key-Value Fields Card */}
               <div className="scan-review-card">
-                <div className="scan-card-header">
+                <div className="scan-card-header" style={{ flexWrap: 'wrap', gap: '10px' }}>
                   <h4 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <ListChecks size={17} strokeWidth={1.75} style={{ color: 'var(--primary)' }} />
                     {formData.invoice_type === 'Document/Form'
-                      ? `Các trường thông tin bóc tách (Key - Value) (${formData.items.length})`
+                      ? 'Các trường thông tin bóc tách'
                       : `Danh sách sản phẩm (${formData.items.length})`}
                   </h4>
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm"
-                    onClick={handleAddItem}
-                  >
-                    <Plus size={15} strokeWidth={1.75} />
-                    {formData.invoice_type === 'Document/Form' ? 'Thêm trường' : 'Thêm dòng'}
-                  </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    {selectedItemIndices.length > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm"
+                        style={{ width: 'auto' }}
+                        onClick={() => setConfirmBulkDeleteOpen(true)}
+                      >
+                        <Trash2 size={14} strokeWidth={1.75} />
+                        Xóa đã chọn ({selectedItemIndices.length})
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      onClick={handleAddItem}
+                    >
+                      <Plus size={15} strokeWidth={1.75} />
+                      {formData.invoice_type === 'Document/Form' ? 'Thêm trường' : 'Thêm dòng'}
+                    </button>
+                  </div>
                 </div>
 
                 {formData.items.length === 0 ? (
@@ -1259,14 +1410,34 @@ export default function Scan() {
                     <table className="scan-items-table">
                       <thead>
                         <tr>
-                          <th style={{ width: '8%', textAlign: 'center' }}>STT</th>
-                          <th style={{ width: '84%' }}>Trường thông tin & Nội dung (Tên trường: Giá trị) *</th>
-                          <th style={{ width: '8%' }}></th>
+                          <th style={{ width: '6%', textAlign: 'center' }}>
+                            <input
+                              type="checkbox"
+                              checked={
+                                formData.items.length > 0 &&
+                                selectedItemIndices.length === formData.items.length
+                              }
+                              onChange={handleToggleSelectAllItems}
+                              title="Chọn tất cả các trường"
+                              style={{ width: '15px', height: '15px', accentColor: 'var(--primary)', cursor: 'pointer' }}
+                            />
+                          </th>
+                          <th style={{ width: '7%', textAlign: 'center' }}>STT</th>
+                          <th style={{ width: '79%' }}>Trường thông tin & Nội dung</th>
+                          <th style={{ width: '8%', textAlign: 'center' }}>Xóa</th>
                         </tr>
                       </thead>
                       <tbody>
                         {formData.items.map((item, idx) => (
                           <tr key={idx}>
+                            <td style={{ textAlign: 'center' }}>
+                              <input
+                                type="checkbox"
+                                checked={selectedItemIndices.includes(idx)}
+                                onChange={() => handleToggleSelectItem(idx)}
+                                style={{ width: '15px', height: '15px', accentColor: 'var(--primary)', cursor: 'pointer' }}
+                              />
+                            </td>
                             <td style={{ textAlign: 'center', fontWeight: 600, color: 'var(--text-muted)' }}>
                               {idx + 1}
                             </td>
@@ -1276,7 +1447,7 @@ export default function Scan() {
                                 className="form-input form-input-sm"
                                 value={item.name}
                                 onChange={(e) => handleItemChange(idx, 'name', e.target.value)}
-                                placeholder="VD: COMPOUND: 3-Hydroxy-3-methylbutanoic acid..."
+                                placeholder="VD: Họ và tên: Nguyễn Văn A..."
                               />
                             </td>
                             <td style={{ textAlign: 'center' }}>
@@ -1284,7 +1455,7 @@ export default function Scan() {
                                 type="button"
                                 className="btn-icon-danger"
                                 onClick={() => confirmRemoveItem(idx)}
-                                title="Xóa trường này"
+                                title="Xóa trường thông tin này"
                               >
                                 <Trash2 size={14} strokeWidth={1.75} />
                               </button>
@@ -1380,36 +1551,38 @@ export default function Scan() {
                 )}
               </div>
 
-              {/* Payment Summary Card */}
-              <div className="scan-review-card scan-total-card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                  <div>
-                    <div className="scan-total-label">Tổng thanh toán cuối cùng (VNĐ) *</div>
-                    <div className="scan-total-display">{formatVND(formData.total_amount)}</div>
-                  </div>
+              {/* Payment Summary Card (Chỉ hiện khi là Hóa đơn mua bán, ẩn khi là Tài liệu / Biểu mẫu) */}
+              {formData.invoice_type !== 'Document/Form' && (
+                <div className="scan-review-card scan-total-card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                    <div>
+                      <div className="scan-total-label">Tổng thanh toán cuối cùng (VNĐ) *</div>
+                      <div className="scan-total-display">{formatVND(formData.total_amount)}</div>
+                    </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <button
-                      type="button"
-                      className="btn btn-outline btn-sm"
-                      onClick={handleRecalculateTotal}
-                      title="Tính lại tổng thành tiền từ danh sách các dòng sản phẩm"
-                    >
-                      Tính lại từ các mặt hàng
-                    </button>
-                    <input
-                      type="number"
-                      className="form-input"
-                      style={{ width: '180px', fontWeight: 700, fontSize: '16px', textAlign: 'right' }}
-                      value={formData.total_amount}
-                      onChange={(e) => handleFieldChange('total_amount', e.target.value)}
-                      min="0"
-                      step="any"
-                      required
-                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={handleRecalculateTotal}
+                        title="Tính lại tổng thành tiền từ danh sách các dòng sản phẩm"
+                      >
+                        Tính lại từ các mặt hàng
+                      </button>
+                      <input
+                        type="number"
+                        className="form-input"
+                        style={{ width: '180px', fontWeight: 700, fontSize: '16px', textAlign: 'right' }}
+                        value={formData.total_amount}
+                        onChange={(e) => handleFieldChange('total_amount', e.target.value)}
+                        min="0"
+                        step="any"
+                        required
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
               {/* Action Buttons (Chỉ giữ 1 nút Hủy & Quét lại duy nhất theo feedback) */}
               <div className="scan-review-bottom-bar">
@@ -1432,7 +1605,9 @@ export default function Scan() {
                   {submitting
                     ? 'Đang lưu & khóa dữ liệu...'
                     : multiBills.length > 1
-                    ? `Xác nhận & Lưu HĐ #${activeBillIdx + 1}`
+                    ? `Xác nhận & Lưu ${formData.invoice_type === 'Document/Form' ? 'tài liệu' : 'HĐ'} #${activeBillIdx + 1}`
+                    : formData.invoice_type === 'Document/Form'
+                    ? 'Xác nhận & Lưu tài liệu'
                     : 'Xác nhận & Lưu hóa đơn'}
                 </button>
               </div>
@@ -1519,22 +1694,26 @@ export default function Scan() {
         </div>
       )}
 
-      {/* MODAL 2: Xác nhận xóa dòng mặt hàng */}
+      {/* MODAL 2: Xác nhận xóa dòng mặt hàng / trường thông tin */}
       {confirmDeleteItemIdx !== null && (
         <div className="modal-overlay" onClick={() => setConfirmDeleteItemIdx(null)}>
           <div className="modal" style={{ maxWidth: '420px' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Xác nhận xóa dòng mặt hàng</h3>
+              <h3>
+                {formData.invoice_type === 'Document/Form'
+                  ? 'Xác nhận xóa trường thông tin'
+                  : 'Xác nhận xóa dòng mặt hàng'}
+              </h3>
               <button className="modal-close" onClick={() => setConfirmDeleteItemIdx(null)}>
                 <X size={16} strokeWidth={1.75} />
               </button>
             </div>
             <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-              Bạn có chắc chắn muốn xóa mặt hàng{' '}
+              Bạn có chắc chắn muốn xóa {formData.invoice_type === 'Document/Form' ? 'trường thông tin' : 'mặt hàng'}{' '}
               <strong>
                 "{formData.items[confirmDeleteItemIdx]?.name || `Dòng #${confirmDeleteItemIdx + 1}`}"
               </strong>{' '}
-              khỏi hóa đơn này không?
+              khỏi {formData.invoice_type === 'Document/Form' ? 'tài liệu' : 'hóa đơn'} này không?
             </p>
             <div className="modal-actions">
               <button type="button" className="btn btn-outline" onClick={() => setConfirmDeleteItemIdx(null)}>
@@ -1543,6 +1722,32 @@ export default function Scan() {
               <button type="button" className="btn btn-danger" onClick={executeRemoveItem}>
                 <Trash2 size={15} strokeWidth={1.75} />
                 Chắc chắn xóa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2B: Xác nhận xóa nhiều trường thông tin đã chọn */}
+      {confirmBulkDeleteOpen && selectedItemIndices.length > 0 && (
+        <div className="modal-overlay" onClick={() => setConfirmBulkDeleteOpen(false)}>
+          <div className="modal" style={{ maxWidth: '420px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Xác nhận xóa {selectedItemIndices.length} trường đã chọn</h3>
+              <button className="modal-close" onClick={() => setConfirmBulkDeleteOpen(false)}>
+                <X size={16} strokeWidth={1.75} />
+              </button>
+            </div>
+            <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
+              Bạn có chắc chắn muốn xóa bớt <strong>{selectedItemIndices.length} trường thông tin</strong> đã chọn khỏi tài liệu này không?
+            </p>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-outline" onClick={() => setConfirmBulkDeleteOpen(false)}>
+                Hủy
+              </button>
+              <button type="button" className="btn btn-danger" onClick={executeBulkRemoveItems}>
+                <Trash2 size={15} strokeWidth={1.75} />
+                Chắc chắn xóa ({selectedItemIndices.length})
               </button>
             </div>
           </div>

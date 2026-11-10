@@ -6532,3 +6532,73 @@ a.header-bc-section:hover {
   box-shadow: 0 0 0 2px var(--primary-bg) !important;
 }
 
+/* --- 13.7 SCAN FILE NAME & META OVERFLOW FIX --- */
+.scan-review-left,
+.scan-review-right,
+.scan-review-card {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.scan-review-file-meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 6px 4px 0;
+}
+
+.scan-review-file-meta .scan-file-name {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+.scan-selected-pill {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.scan-selected-pill .scan-file-name-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.scan-selected-pill .scan-file-name {
+  min-width: 0;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+  vertical-align: bottom;
+}
+
+.scan-ready-meta {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.scan-ready-meta .scan-file-name {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+

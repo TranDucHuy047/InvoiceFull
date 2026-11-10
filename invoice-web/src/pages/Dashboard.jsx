@@ -15,6 +15,7 @@ import {
 import {
   Wallet,
   Receipt,
+  FileText,
   Calculator,
   Award,
   ChevronLeft,
@@ -205,28 +206,42 @@ export default function Dashboard() {
       });
     }
 
+    // Tách riêng Hóa đơn mua sắm vs Tài liệu / Biểu mẫu
+    const matchedInvoices = matched.filter((m) => m.inv.invoice_type !== 'Document/Form');
+    const matchedDocs = matched.filter((m) => m.inv.invoice_type === 'Document/Form');
+
+    const totalInvoicesCount = invoices.filter((i) => i.invoice_type !== 'Document/Form').length;
+    const totalDocsCount = invoices.filter((i) => i.invoice_type === 'Document/Form').length;
+
+    const invoiceCount = matchedInvoices.length;
+    const docCount = matchedDocs.length;
     const totalCount = matched.length;
-    const totalAmount = matched.reduce(
+
+    // Tổng chi tiêu: CHỈ tính từ các hóa đơn mua sắm (không tính tài liệu 0đ)
+    const invoiceAmount = matchedInvoices.reduce(
       (sum, { inv }) => sum + (Number(inv.total_amount) || 0),
       0
     );
 
-    const avgAmount = totalCount > 0 ? Math.round(totalAmount / totalCount) : 0;
+    // Mức chi tiêu trung bình: chỉ chia cho số lượng HÓA ĐƠN MUA HÀNG
+    const avgAmount = invoiceCount > 0 ? Math.round(invoiceAmount / invoiceCount) : 0;
 
+    // Hóa đơn cao nhất: TUYỆT ĐỐI CHỈ LẤY HÓA ĐƠN MUA HÀNG (có số tiền > 0 và invoice_type != 'Document/Form')
     let highestInv = null;
-    for (const { inv } of matched) {
+    for (const { inv } of matchedInvoices) {
       const val = Number(inv.total_amount) || 0;
-      if (!highestInv || val > (Number(highestInv.total_amount) || 0)) {
+      if (val > 0 && (!highestInv || val > (Number(highestInv.total_amount) || 0))) {
         highestInv = inv;
       }
     }
 
-    // Fallback to overall highest if current period is empty
-    if (!highestInv && invoices.length > 0) {
-      for (const inv of invoices) {
+    // Hóa đơn cao nhất toàn thời gian (lịch sử) để tham khảo khi kỳ hiện tại chưa có hóa đơn mua hàng
+    let highestOverallInv = null;
+    for (const inv of invoices) {
+      if (inv.invoice_type !== 'Document/Form') {
         const val = Number(inv.total_amount) || 0;
-        if (!highestInv || val > (Number(highestInv.total_amount) || 0)) {
-          highestInv = inv;
+        if (val > 0 && (!highestOverallInv || val > (Number(highestOverallInv.total_amount) || 0))) {
+          highestOverallInv = inv;
         }
       }
     }
@@ -240,9 +255,15 @@ export default function Dashboard() {
       counts,
       amounts,
       totalCount,
-      totalAmount,
+      invoiceCount,
+      docCount,
+      totalInvoicesCount,
+      totalDocsCount,
+      invoiceAmount,
+      totalAmount: invoiceAmount,
       avgAmount,
       highestInv,
+      highestOverallInv,
     };
   }, [invoices, period, anchorDate]);
 
@@ -317,6 +338,13 @@ export default function Dashboard() {
     week: 'Tổng chi tiêu tuần',
     month: 'Tổng chi tiêu tháng',
     year: 'Tổng chi tiêu năm',
+  };
+
+  const periodHighestTitleMap = {
+    day: 'Hóa đơn cao nhất ngày',
+    week: 'Hóa đơn cao nhất tuần',
+    month: 'Hóa đơn cao nhất tháng',
+    year: 'Hóa đơn cao nhất năm',
   };
 
   const toISODateInput = (d) => {
@@ -439,12 +467,13 @@ export default function Dashboard() {
           </button>
         )}
         <span className="period-nav-hint">
-          Thống kê theo ngày in trên hóa đơn ({periodInfo.totalCount}/{invoices.length} HĐ)
+          Thống kê theo ngày in trên chứng từ ({periodInfo.totalCount}/{invoices.length} chứng từ • {periodInfo.invoiceCount} HĐ • {periodInfo.docCount} tài liệu)
         </span>
       </div>
 
-      {/* 4 KPI Stat Cards Row */}
-      <div className="kpi-grid-4">
+      {/* 5 KPI Stat Cards Row (Phân định rõ Hóa đơn mua sắm & Tài liệu / Biểu mẫu) */}
+      <div className="kpi-grid-5">
+        {/* Card 1: Tổng chi tiêu */}
         <div className="kpi-stat-card">
           <div className="kpi-stat-top">
             <span className="kpi-stat-title">{periodTitleMap[period] || 'Tổng chi tiêu tháng'}</span>
@@ -452,12 +481,17 @@ export default function Dashboard() {
               <Wallet size={19} strokeWidth={1.75} />
             </div>
           </div>
-          <div className="kpi-stat-value">{formatCurrency(periodInfo.totalAmount)}</div>
+          <div className="kpi-stat-value">{formatCurrency(periodInfo.invoiceAmount)}</div>
           <div className="kpi-stat-sub">
-            Trong {periodInfo.label.toLowerCase()} ({periodInfo.totalCount} hóa đơn)
+            {periodInfo.invoiceAmount > 0
+              ? `Trong ${periodInfo.label.toLowerCase()} (${periodInfo.invoiceCount} hóa đơn)`
+              : periodInfo.docCount > 0
+              ? `Kỳ này có ${periodInfo.docCount} tài liệu (không chi tiêu)`
+              : `Chưa có chi tiêu trong ${periodInfo.label.toLowerCase()}`}
           </div>
         </div>
 
+        {/* Card 2: Tổng số hóa đơn */}
         <div className="kpi-stat-card">
           <div className="kpi-stat-top">
             <span className="kpi-stat-title">Tổng số hóa đơn</span>
@@ -465,12 +499,27 @@ export default function Dashboard() {
               <Receipt size={19} strokeWidth={1.75} />
             </div>
           </div>
-          <div className="kpi-stat-value">{periodInfo.totalCount}</div>
+          <div className="kpi-stat-value">{periodInfo.invoiceCount}</div>
           <div className="kpi-stat-sub">
-            Toàn hệ thống: {invoices.length} chứng từ đã lưu
+            Toàn hệ thống: {periodInfo.totalInvoicesCount} hóa đơn mua hàng
           </div>
         </div>
 
+        {/* Card 3: Tổng số tài liệu (Mới bổ sung theo yêu cầu) */}
+        <div className="kpi-stat-card">
+          <div className="kpi-stat-top">
+            <span className="kpi-stat-title">Tổng số tài liệu</span>
+            <div className="kpi-stat-icon purple">
+              <FileText size={19} strokeWidth={1.75} />
+            </div>
+          </div>
+          <div className="kpi-stat-value">{periodInfo.docCount}</div>
+          <div className="kpi-stat-sub">
+            Toàn hệ thống: {periodInfo.totalDocsCount} tài liệu / biểu mẫu
+          </div>
+        </div>
+
+        {/* Card 4: Trung bình / hóa đơn */}
         <div className="kpi-stat-card">
           <div className="kpi-stat-top">
             <span className="kpi-stat-title">Trung bình / hóa đơn</span>
@@ -480,24 +529,57 @@ export default function Dashboard() {
           </div>
           <div className="kpi-stat-value">{formatCurrency(periodInfo.avgAmount)}</div>
           <div className="kpi-stat-sub">
-            Mức chi tiêu bình quân mỗi giao dịch
+            {periodInfo.invoiceCount > 0
+              ? `Bình quân trên ${periodInfo.invoiceCount} hóa đơn mua sắm`
+              : 'Chưa có hóa đơn mua sắm trong kỳ'}
           </div>
         </div>
 
+        {/* Card 5: Hóa đơn cao nhất (CHỈ hiển thị Hóa đơn mua hàng, TUYỆT ĐỐI KHÔNG hiện tài liệu) */}
         <div className="kpi-stat-card">
           <div className="kpi-stat-top">
-            <span className="kpi-stat-title">Hóa đơn cao nhất</span>
+            <span className="kpi-stat-title">
+              {periodHighestTitleMap[period] || 'Hóa đơn cao nhất tháng'}
+            </span>
             <div className="kpi-stat-icon amber">
               <Award size={19} strokeWidth={1.75} />
             </div>
           </div>
           <div className="kpi-stat-value">
-            {periodInfo.highestInv ? formatCurrency(periodInfo.highestInv.total_amount) : '0 đ'}
-          </div>
-          <div className="kpi-stat-sub" title={periodInfo.highestInv?.store_name || ''}>
             {periodInfo.highestInv
-              ? `${periodInfo.highestInv.store_name || 'Chưa rõ cửa hàng'}`
-              : 'Chưa có dữ liệu hóa đơn'}
+              ? formatCurrency(periodInfo.highestInv.total_amount)
+              : '0 đ'}
+          </div>
+          <div
+            className="kpi-stat-sub"
+            title={
+              periodInfo.highestInv
+                ? `${periodInfo.highestInv.store_name} (Kỷ lục toàn hệ thống: ${formatCurrency(periodInfo.highestOverallInv?.total_amount || 0)} - ${periodInfo.highestOverallInv?.store_name})`
+                : periodInfo.highestOverallInv
+                ? `Kỷ lục toàn hệ thống: ${formatCurrency(periodInfo.highestOverallInv.total_amount)} (${periodInfo.highestOverallInv.store_name})`
+                : 'Chưa có hóa đơn mua sắm'
+            }
+          >
+            {periodInfo.highestInv ? (
+              <>
+                <span>{periodInfo.highestInv.store_name || 'Hóa đơn trong kỳ'}</span>
+                {periodInfo.highestOverallInv &&
+                  periodInfo.highestOverallInv.invoice_id !== periodInfo.highestInv.invoice_id && (
+                    <span style={{ display: 'block', fontSize: '11.5px', color: '#d97706', marginTop: '2px', fontWeight: 600 }}>
+                      Kỷ lục: {formatCurrency(periodInfo.highestOverallInv.total_amount)} ({periodInfo.highestOverallInv.store_name})
+                    </span>
+                  )}
+              </>
+            ) : (
+              <>
+                <span>Chưa có hóa đơn trong {periodInfo.label.toLowerCase()}</span>
+                {periodInfo.highestOverallInv && (
+                  <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    Kỷ lục: {formatCurrency(periodInfo.highestOverallInv.total_amount)} ({periodInfo.highestOverallInv.store_name})
+                  </span>
+                )}
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -514,8 +596,8 @@ export default function Dashboard() {
             </div>
             <div className="stats-value" style={{ fontSize: '24px', marginTop: '2px' }}>
               {chartMode === 'count'
-                ? `${periodInfo.totalCount} hóa đơn`
-                : formatCurrency(periodInfo.totalAmount)}
+                ? `${periodInfo.totalCount} chứng từ (${periodInfo.invoiceCount} HĐ • ${periodInfo.docCount} tài liệu)`
+                : formatCurrency(periodInfo.invoiceAmount)}
             </div>
           </div>
           <div style={{ display: 'flex', gap: '6px' }}>
@@ -529,7 +611,7 @@ export default function Dashboard() {
               className={`chip ${chartMode === 'amount' ? 'active' : ''}`}
               onClick={() => setChartMode('amount')}
             >
-              Chi tiêu
+              Chi tiêu ({formatCurrency(periodInfo.invoiceAmount)})
             </button>
           </div>
         </div>
@@ -539,11 +621,11 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Hóa đơn gần đây */}
+      {/* Hóa đơn & tài liệu gần đây */}
       <div className="recent-section">
         <div className="section-header">
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>Hóa đơn gần đây</span>
+            <span>Hóa đơn & tài liệu gần đây</span>
             {periodInfo.matched.length > 0 && (
               <span
                 style={{
@@ -566,7 +648,7 @@ export default function Dashboard() {
               onClick={() => navigate('/scan')}
             >
               <ScanLine size={15} strokeWidth={1.75} />
-              Quét hóa đơn mới
+              Quét hóa đơn & tài liệu
             </button>
             <a
               href="/history"
@@ -591,41 +673,65 @@ export default function Dashboard() {
             <div className="empty-icon" style={{ display: 'inline-flex' }}>
               <Receipt size={42} strokeWidth={1.5} />
             </div>
-            <h3>Chưa có hóa đơn nào</h3>
-            <p>Hãy quét hóa đơn đầu tiên của bạn để bắt đầu theo dõi chi tiêu.</p>
+            <h3>Chưa có chứng từ nào</h3>
+            <p>Hãy quét hóa đơn hoặc tài liệu đầu tiên của bạn để bắt đầu quản lý.</p>
           </div>
         ) : (
-          recentInvoices.map((inv) => (
-            <div
-              key={inv.invoice_id}
-              className="invoice-item"
-              onClick={() => navigate(`/history/${inv.invoice_id}`)}
-            >
-              <div className="invoice-item-icon">
-                <Store size={20} strokeWidth={1.75} />
-              </div>
-              <div className="invoice-item-info">
-                <h4>{inv.store_name || 'Cửa hàng chưa xác định'}</h4>
-                <div className="invoice-item-meta">
-                  <span>{inv.date || 'Chưa rõ ngày'}</span>
-                  <span>•</span>
-                  <span>{inv.invoice_type || 'Hóa đơn bán lẻ'}</span>
-                  {inv.store_address && (
-                    <>
-                      <span>•</span>
-                      <span style={{ maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {inv.store_address}
-                      </span>
-                    </>
-                  )}
+          recentInvoices.map((inv) => {
+            const isDoc = inv.invoice_type === 'Document/Form';
+            const itemsList = inv.hasItems || inv.items || [];
+            const itemCount = Array.isArray(itemsList) ? itemsList.length : 0;
+
+            return (
+              <div
+                key={inv.invoice_id}
+                className="invoice-item"
+                onClick={() => navigate(`/history/${inv.invoice_id}`)}
+              >
+                <div
+                  className="invoice-item-icon"
+                  style={isDoc ? { background: 'rgba(168, 85, 247, 0.14)', color: '#a855f7' } : {}}
+                >
+                  {isDoc ? <FileText size={20} strokeWidth={1.75} /> : <Store size={20} strokeWidth={1.75} />}
                 </div>
+                <div className="invoice-item-info">
+                  <h4>{inv.store_name || (isDoc ? 'Tài liệu chưa có tiêu đề' : 'Cửa hàng chưa xác định')}</h4>
+                  <div className="invoice-item-meta">
+                    <span>{inv.date || 'Chưa rõ ngày'}</span>
+                    <span>•</span>
+                    <span style={isDoc ? { color: '#a855f7', fontWeight: 600 } : {}}>
+                      {isDoc ? 'Tài liệu / Biểu mẫu' : inv.invoice_type || 'Hóa đơn'}
+                    </span>
+                    {itemCount > 0 && (
+                      <>
+                        <span>•</span>
+                        <span>{isDoc ? `${itemCount} trường thông tin` : `${itemCount} SP`}</span>
+                      </>
+                    )}
+                    {inv.store_address && (
+                      <>
+                        <span>•</span>
+                        <span style={{ maxWidth: '280px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {inv.store_address}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div
+                  className="invoice-item-amount"
+                  style={isDoc ? { color: '#a855f7', fontSize: '13px', fontWeight: 600 } : {}}
+                >
+                  {isDoc
+                    ? (itemCount > 0 ? `${itemCount} trường` : 'Tài liệu / Biểu mẫu')
+                    : formatCurrency(inv.total_amount)}
+                </div>
+                <span className="invoice-item-arrow" style={{ display: 'inline-flex' }}>
+                  <ChevronRight size={18} strokeWidth={1.75} />
+                </span>
               </div>
-              <div className="invoice-item-amount">{formatCurrency(inv.total_amount)}</div>
-              <span className="invoice-item-arrow" style={{ display: 'inline-flex' }}>
-                <ChevronRight size={18} strokeWidth={1.75} />
-              </span>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

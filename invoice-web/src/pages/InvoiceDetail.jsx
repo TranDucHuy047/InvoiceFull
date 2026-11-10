@@ -522,7 +522,7 @@ export default function InvoiceDetail() {
         className="ai-ask-banner"
         onClick={() =>
           navigate('/ai-chat', {
-            state: { invoiceId: id, storeName: invoice.store_name },
+            state: { invoiceId: id, storeName: invoice.store_name, invoiceType: invoice.invoice_type },
           })
         }
       >

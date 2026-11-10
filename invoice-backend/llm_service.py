@@ -30,7 +30,13 @@ def _get_gemini_url(model_name: str) -> str:
     """Tạo URL API cho một model cụ thể."""
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={API_KEY}"
 
-def call_llm_with_retry(prompt: str, max_retries: int = 3, image_bytes: bytes = None, mime_type: str = "image/jpeg") -> str:
+def call_llm_with_retry(
+    prompt: str,
+    max_retries: int = 3,
+    image_bytes: bytes = None,
+    mime_type: str = "image/jpeg",
+    response_mime_type: str = None
+) -> str:
     """Gọi Gemini API qua REST với auto-retry và auto-fallback sang model khác khi hết quota. Hỗ trợ đính kèm ảnh (Multimodal)."""
     global current_model_index
     
@@ -44,9 +50,13 @@ def call_llm_with_retry(prompt: str, max_retries: int = 3, image_bytes: bytes = 
             }
         })
         
+    gen_config = {"temperature": 0.1}
+    if response_mime_type:
+        gen_config["responseMimeType"] = response_mime_type
+
     payload = {
         "contents": [{"parts": parts}],
-        "generationConfig": {"temperature": 0.1}
+        "generationConfig": gen_config
     }
     
     start_index = current_model_index

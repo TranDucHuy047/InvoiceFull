@@ -31,9 +31,9 @@ from llm_service import call_llm_with_retry
 router = APIRouter()
 
 OUT_OF_SCOPE_RESPONSE = (
-    "Xin lỗi, tôi là trợ lý AI chuyên về tra cứu hóa đơn và quản lý chi tiêu. "
-    "Tôi chỉ có thể hỗ trợ các câu hỏi liên quan đến hóa đơn, sản phẩm, cửa hàng và lịch sử chi tiêu của bạn. "
-    "Vui lòng đặt câu hỏi liên quan đến hóa đơn nhé!"
+    "Xin lỗi, tôi là trợ lý AI chuyên về tra cứu hóa đơn, tài liệu biểu mẫu và quản lý chi tiêu. "
+    "Tôi chỉ có thể hỗ trợ các câu hỏi liên quan đến hóa đơn, tài liệu biểu mẫu, sản phẩm, cửa hàng và lịch sử chi tiêu của bạn. "
+    "Vui lòng đặt câu hỏi liên quan đến chứng từ hoặc tài liệu nhé!"
 )
 
 def _remove_diacritics(s: str) -> str:
@@ -378,13 +378,20 @@ Nội dung OCR & chi tiết in trên mặt hóa đơn (bao gồm Mã số thuế
 {context}
 
 QUY TẮC TRẢ LỜI BẮT BUỘC (TUÂN THỦ TUYỆT ĐỐI):
-1. ĐỊNH DẠNG MARKDOWN SẮC NÉT, DỄ ĐỌC:
-   - Viết câu trả lời tự nhiên, mạch lạc, rõ ràng.
+1. TRẢ LỜI TRỰC TIẾP, ĐÚNG TRỌNG TÂM, TUYỆT ĐỐI KHÔNG ĐƯA THÔNG TIN THỪA KHÔNG ĐƯỢC HỎI:
+   - Người dùng hỏi điều gì thì CHỈ trả lời đúng điều đó. KHÔNG mở đầu dài dòng, rườm rà.
+   - NGUYÊN TẮC KHI THÔNG TIN KHÔNG CÓ TRÊN CHỨNG TỪ (QUY TẮC CỐT LÕI):
+     + Nếu thông tin, trường dữ liệu, chỉ số hoặc nội dung người dùng hỏi KHÔNG XUẤT HIỆN / KHÔNG ĐƯỢC ĐỀ CẬP trên tài liệu hoặc hóa đơn (ví dụ: hỏi về điểm số, lệ phí, tiền boa, hạn bảo hành, thông tin không có trên chứng từ...):
+       BẮT BUỘC chỉ trả lời ngắn gọn, trực diện trong 1 câu: xác nhận rõ trên tài liệu/hóa đơn này không có thông tin đó (ví dụ: "Trên tài liệu này không ghi nhận thông tin về điểm số khóa luận tốt nghiệp hay số tiền lệ phí.").
+     + TUYỆT ĐỐI KHÔNG tự ý liệt kê, tóm tắt hoặc xả lại các thông tin khác đang có trong tài liệu/hóa đơn (như thông tin sinh viên, tên đề tài, con dấu, các mặt hàng...) để "bù đắp". Người dùng KHÔNG yêu cầu tóm tắt tài liệu thì KHÔNG ĐƯỢC tự ý đưa ra. Dừng câu trả lời ngay lập tức!
+2. ĐỊNH DẠNG MARKDOWN GỌN GÀNG, TỰ NHIÊN:
+   - Viết câu trả lời tự nhiên, mạch lạc, ngắn gọn.
    - Sử dụng cú pháp **in đậm** cho các số tiền, tổng cộng, số lượng, tên mặt hàng, nhãn trường (Key), giá trị (Value) và thông tin quan trọng.
-   - Sử dụng danh sách gạch đầu dòng `- ` khi liệt kê nhiều sản phẩm hoặc nhiều trường thông tin.
-2. ĐỐI VỚI TÀI LIỆU / BIỂU MẪU CÓ CẤU TRÚC (FUNSD - Document/Form):
-   - Khi người dùng hỏi về thông tin trên tài liệu/biểu mẫu (như: *Người đăng ký/Người thực hiện/Investigator tên gì? Ngày đăng ký/Ngày thử nghiệm là ngày nào? Địa chỉ/Đơn vị/Nguồn (Source) ghi trong tài liệu là gì? Hợp chất/Compound hoặc chủ đề là gì? Ô Checkbox nào được đánh dấu X hoặc chọn? Chữ ký của ai? Tài liệu này có những thông tin chính nào?*), hãy đối chiếu trực tiếp cả "DANH SÁCH CÁC TRƯỜNG THÔNG TIN (KEY - VALUE)", phần "Nội dung OCR" lẫn HÌNH ẢNH TÀI LIỆU ĐÍNH KÈM để trả lời đầy đủ, chính xác từng chi tiết.
-3. ĐỐI VỚI HÓA ĐƠN MUA HÀNG (SROIE):
+   - Chỉ sử dụng danh sách gạch đầu dòng `- ` khi người dùng thực sự yêu cầu liệt kê danh sách (như "liệt kê các mặt hàng", "tài liệu gồm những thông tin nào", "tóm tắt tài liệu").
+3. ĐỐI VỚI TÀI LIỆU / BIỂU MẪU CÓ CẤU TRÚC (FUNSD - Document/Form):
+   - Khi người dùng hỏi về thông tin có trên tài liệu/biểu mẫu (như: *Người đăng ký/Người thực hiện/Investigator tên gì? Ngày đăng ký/Ngày thử nghiệm là ngày nào? Địa chỉ/Đơn vị/Nguồn (Source) ghi trong tài liệu là gì? Hợp chất/Compound hoặc chủ đề là gì? Ô Checkbox nào được đánh dấu X hoặc chọn? Chữ ký của ai? Tài liệu này có những thông tin chính nào?*), hãy đối chiếu trực tiếp cả "DANH SÁCH CÁC TRƯỜNG THÔNG TIN (KEY - VALUE)", phần "Nội dung OCR" lẫn HÌNH ẢNH TÀI LIỆU ĐÍNH KÈM để trả lời đầy đủ, chính xác từng chi tiết.
+   - Khi người dùng yêu cầu tóm tắt hoặc hỏi tài liệu gồm những thông tin chính nào, hãy phân nhóm và liệt kê rõ ràng các mục chính.
+4. ĐỐI VỚI HÓA ĐƠN MUA HÀNG (SROIE):
    - Khi người dùng hỏi về tổng số lượng và tổng tiền của một mặt hàng xuất hiện ở nhiều dòng trên hóa đơn, BẮT BUỘC lấy đúng số liệu đã cộng gộp tại mục "2. BẢNG THỐNG KÊ SAU KHI GỘP CÁC DÒNG TRÙNG TÊN".
    - Khi người dùng hỏi số dòng hàng (line items), số loại sản phẩm khác nhau (unique products) và tổng số lượng đơn vị hàng hóa, BẮT BUỘC trả lời đúng theo mục "3. CHỈ SỐ THỐNG KÊ TỔNG HỢP CHÍNH XÁC 100%".
    - Khi người dùng hỏi nếu gộp các dòng trùng tên lại thì chi nhiều tiền nhất cho loại sản phẩm nào, BẮT BUỘC trả lời đúng sản phẩm hạng 1 tại mục "2. BẢNG THỐNG KÊ SAU KHI GỘP CÁC DÒNG TRÙNG TÊN" và mục "3. CHỈ SỐ THỐNG KÊ TỔNG HỢP CHÍNH XÁC 100%".
@@ -583,6 +590,7 @@ HƯỚNG DẪN TRẢ LỜI (TUÂN THỦ TUYỆT ĐỐI):
      BẮT BUỘC TỪ CHỐI và trả lời: "Vì lý do bảo mật và bảo vệ quyền riêng tư dữ liệu, bạn chỉ có thể tra cứu thông tin hóa đơn của chính tài khoản của bạn ({username}). Hệ thống không hỗ trợ xem hoặc tra cứu thông tin của tài khoản khác."
    - TUYỆT ĐỐI KHÔNG dùng dữ liệu của tài khoản hiện tại để trả lời thay thế như thể đó là dữ liệu của tài khoản khác.
 1. Trả lời trực tiếp vào trọng tâm câu hỏi bằng ngôn ngữ tự nhiên, ngắn gọn. TUYỆT ĐỐI KHÔNG trình bày các bước suy luận, không tạo tiêu đề "Kết quả:" hay "Giải thích:".
+   - NGUYÊN TẮC THÔNG TIN KHÔNG CÓ TRONG HỆ THỐNG: Nếu người dùng hỏi về thông tin, chỉ số, cửa hàng hoặc chứng từ không tồn tại trong dữ liệu, BẮT BUỘC chỉ trả lời ngắn gọn: "Hệ thống không tìm thấy thông tin về [thông tin được hỏi]." TUYỆT ĐỐI KHÔNG tự ý liệt kê các hóa đơn hay chi tiêu khác nếu người dùng không yêu cầu.
 2. LUẬT SỐ LƯỢNG: Nếu câu hỏi của người dùng ở dạng số ít (ví dụ: "hóa đơn gần nhất", "món đắt nhất", "món rẻ nhất", "hóa đơn lớn nhất"), BẮT BUỘC CHỈ TRẢ VỀ ĐÚNG 1 KẾT QUẢ DUY NHẤT. Nếu có nhiều món có giá cao nhất bằng nhau, hãy liệt kê các món đó.
 3. QUY TẮC SO SÁNH GIÁ TIỀN & TOÁN HỌC CHÍNH XÁC:
    - Khi tìm "món đắt nhất / rẻ nhất / nhiều tiền nhất / ít tiền nhất", BẮT BUỘC đối chiếu chính xác giá trị số trong phần "DỮ LIỆU CHI TIẾT CÁC MÓN HÀNG ĐÃ MUA".
@@ -646,9 +654,11 @@ async def get_chat_sessions(current_user: dict = Depends(get_current_user)):
         else:
             inv = get_invoice_by_id(session_id, user_id=int(user_id))
             if inv and inv.get("store_name"):
-                session_name = f"Hóa đơn {inv.get('store_name')}"
+                is_doc = inv.get("invoice_type") == "Document/Form" or float(inv.get("total_amount", 0.0) or 0.0) == 0
+                prefix = "Tài liệu" if is_doc else "Hóa đơn"
+                session_name = f"{prefix} {inv.get('store_name')}"
             else:
-                session_name = f"Hóa đơn {session_id}"
+                session_name = f"Chứng từ {session_id}"
                 
         sessions.append({
             "session_id": session_id,

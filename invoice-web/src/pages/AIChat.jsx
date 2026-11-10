@@ -42,6 +42,7 @@ export default function AIChat() {
   const navigate = useNavigate();
   const passedInvoiceId = location.state?.invoiceId;
   const passedStoreName = location.state?.storeName;
+  const passedInvoiceType = location.state?.invoiceType;
 
   const [invoices, setInvoices] = useState([]);
   const [currentInvoiceId, setCurrentInvoiceId] = useState(passedInvoiceId || '');
@@ -56,15 +57,42 @@ export default function AIChat() {
   const [toastMsg, setToastMsg] = useState('');
   const [confirmModal, setConfirmModal] = useState(null); // { title, message, onConfirm }
 
-  const buildWelcomeMessage = (invId, storeName) => ({
-    role: 'ai',
-    content: invId
-      ? `Xin chào! Tôi là **Trợ lý AI Phân Tích Hóa Đơn**.\n\nBạn đang tra cứu hóa đơn của **${storeName || invId}**. Bạn muốn kiểm tra mặt hàng, thuế GTGT, mã số thuế hay tổng tiền trên chứng từ này?`
-      : 'Xin chào! Tôi là **Trợ lý AI Quản Lý Chi Tiêu**.\n\nBạn có thể chọn một hóa đơn ở cột bên trái để đối chiếu ảnh chứng từ gốc, hoặc đặt câu hỏi tổng hợp về toàn bộ lịch sử chi tiêu của bạn.',
-  });
+  const checkIsDoc = (invId, detail = null, list = invoices) => {
+    if (!invId) return false;
+    if (detail && detail.invoice_type === 'Document/Form') return true;
+    if (detail && Number(detail.total_amount || 0) === 0 && Array.isArray(detail.items) && detail.items.length > 0) {
+      if (detail.items.every((it) => Number(it.total_price || 0) === 0)) return true;
+    }
+    const found = list.find((i) => i.invoice_id === invId);
+    if (found && found.invoice_type === 'Document/Form') return true;
+    if (found && Number(found.total_amount || 0) === 0) return true;
+    if (invId === passedInvoiceId && passedInvoiceType === 'Document/Form') return true;
+    return false;
+  };
 
+  const buildWelcomeMessage = (invId, storeName, isDoc = false) => {
+    if (!invId) {
+      return {
+        role: 'ai',
+        content:
+          'Xin chào! Tôi là **Trợ lý AI Quản Lý Chi Tiêu & Tài Liệu**.\n\nBạn có thể chọn một hóa đơn hoặc tài liệu ở cột bên trái để đối chiếu ảnh chứng từ gốc, hoặc đặt câu hỏi tổng hợp về toàn bộ lịch sử chi tiêu và dữ liệu của bạn.',
+      };
+    }
+    if (isDoc) {
+      return {
+        role: 'ai',
+        content: `Xin chào! Tôi là **Trợ lý AI Phân Tích Tài Liệu & Biểu Mẫu**.\n\nBạn đang tra cứu tài liệu của **${storeName || invId}**. Bạn muốn kiểm tra người thực hiện, các điều khoản, thông tin bóc tách hay nội dung chi tiết nào trên tài liệu này?`,
+      };
+    }
+    return {
+      role: 'ai',
+      content: `Xin chào! Tôi là **Trợ lý AI Phân Tích Hóa Đơn**.\n\nBạn đang tra cứu hóa đơn của **${storeName || invId}**. Bạn muốn kiểm tra mặt hàng, thuế GTGT, mã số thuế hay tổng tiền trên chứng từ này?`,
+    };
+  };
+
+  const initialIsDoc = passedInvoiceType === 'Document/Form';
   const [messages, setMessages] = useState([
-    buildWelcomeMessage(passedInvoiceId, passedStoreName),
+    buildWelcomeMessage(passedInvoiceId, passedStoreName, initialIsDoc),
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -93,7 +121,8 @@ export default function AIChat() {
   useEffect(() => {
     const found = invoices.find((i) => i.invoice_id === currentInvoiceId);
     const sName = found ? found.store_name : currentStoreName;
-    fetchHistoryForScope(currentInvoiceId, sName);
+    const isDoc = checkIsDoc(currentInvoiceId, selectedDetail, invoices);
+    fetchHistoryForScope(currentInvoiceId, sName, isDoc);
   }, [currentInvoiceId]);
 
   // Load detailed metadata (tax_amount, items, image_path) whenever currentInvoiceId changes
@@ -115,6 +144,27 @@ export default function AIChat() {
       .catch(() => { });
   }, [currentInvoiceId, invoices]);
 
+  // Tự động đồng bộ tin nhắn chào đón khi dữ liệu chi tiết của chứng từ vừa tải xong
+  useEffect(() => {
+    if (!selectedDetail || !currentInvoiceId) return;
+    const isDoc = checkIsDoc(currentInvoiceId, selectedDetail, invoices);
+    setMessages((prev) => {
+      if (!prev || prev.length === 0) return prev;
+      const first = prev[0];
+      if (first && first.role === 'ai') {
+        const expected = buildWelcomeMessage(
+          currentInvoiceId,
+          selectedDetail.store_name || currentStoreName,
+          isDoc
+        );
+        if (first.content !== expected.content) {
+          return [expected, ...prev.slice(1)];
+        }
+      }
+      return prev;
+    });
+  }, [selectedDetail, currentInvoiceId]);
+
   const fetchSessions = async () => {
     setHistoryLoading(true);
     try {
@@ -128,18 +178,18 @@ export default function AIChat() {
     }
   };
 
-  const fetchHistoryForScope = async (invId, storeName = '') => {
+  const fetchHistoryForScope = async (invId, storeName = '', isDoc = false) => {
     try {
       const targetSession = invId || 'GLOBAL';
       const res = await getChatHistory(targetSession);
       const historyList = res.data?.data || [];
       if (Array.isArray(historyList) && historyList.length > 0) {
-        setMessages([buildWelcomeMessage(invId, storeName), ...historyList]);
+        setMessages([buildWelcomeMessage(invId, storeName, isDoc), ...historyList]);
       } else {
-        setMessages([buildWelcomeMessage(invId, storeName)]);
+        setMessages([buildWelcomeMessage(invId, storeName, isDoc)]);
       }
     } catch (err) {
-      setMessages([buildWelcomeMessage(invId, storeName)]);
+      setMessages([buildWelcomeMessage(invId, storeName, isDoc)]);
     }
   };
 
@@ -151,8 +201,10 @@ export default function AIChat() {
     const selectedId = e.target.value;
     const found = invoices.find((inv) => inv.invoice_id === selectedId);
     const sName = found ? found.store_name : '';
+    const isDoc = checkIsDoc(selectedId, null, invoices);
     setCurrentStoreName(sName);
     setCurrentInvoiceId(selectedId);
+    fetchHistoryForScope(selectedId, sName, isDoc);
   };
 
   const handleSelectSession = (session) => {
@@ -161,17 +213,17 @@ export default function AIChat() {
     const targetInvId = isGlobal ? '' : sessId;
     const found = invoices.find((inv) => inv.invoice_id === targetInvId);
     const sName = found ? found.store_name : session.store_name || '';
+    const isDoc = checkIsDoc(targetInvId, null, invoices);
     setCurrentStoreName(sName);
     setCurrentInvoiceId(targetInvId);
-    if (targetInvId === currentInvoiceId) {
-      fetchHistoryForScope(targetInvId, sName);
-    }
+    fetchHistoryForScope(targetInvId, sName, isDoc);
     setShowHistoryDrawer(false);
   };
 
   const handleStartNewChat = () => {
+    const isDoc = checkIsDoc(currentInvoiceId, selectedDetail, invoices);
     if (messages.length <= 1) {
-      setMessages([buildWelcomeMessage(currentInvoiceId, currentStoreName)]);
+      setMessages([buildWelcomeMessage(currentInvoiceId, currentStoreName, isDoc)]);
       showToast('Đã làm mới cuộc trò chuyện');
       return;
     }
@@ -188,7 +240,7 @@ export default function AIChat() {
         } catch (err) {
           console.error(err);
         }
-        setMessages([buildWelcomeMessage(currentInvoiceId, currentStoreName)]);
+        setMessages([buildWelcomeMessage(currentInvoiceId, currentStoreName, isDoc)]);
         setConfirmModal(null);
         showToast('Đã làm mới cuộc trò chuyện');
       },
@@ -197,6 +249,7 @@ export default function AIChat() {
 
   const handleDeleteSession = (e, sessId) => {
     e.stopPropagation();
+    const isDoc = checkIsDoc(currentInvoiceId, selectedDetail, invoices);
     setConfirmModal({
       title: 'Xác nhận xóa phiên chat',
       message: 'Bạn có chắc chắn muốn xóa phiên trò chuyện này khỏi lịch sử?',
@@ -208,7 +261,7 @@ export default function AIChat() {
           );
           const activeKey = currentInvoiceId || 'GLOBAL';
           if (sessId === activeKey) {
-            setMessages([buildWelcomeMessage(currentInvoiceId, currentStoreName)]);
+            setMessages([buildWelcomeMessage(currentInvoiceId, currentStoreName, isDoc)]);
           }
           showToast('Đã xóa phiên trò chuyện');
         } catch (err) {
@@ -221,6 +274,7 @@ export default function AIChat() {
   };
 
   const handleClearAllHistory = () => {
+    const isDoc = checkIsDoc(currentInvoiceId, selectedDetail, invoices);
     setConfirmModal({
       title: 'Xác nhận xóa toàn bộ lịch sử',
       message: 'Bạn có chắc chắn muốn xóa toàn bộ lịch sử trò chuyện AI? Hành động này không thể hoàn tác.',
@@ -228,7 +282,7 @@ export default function AIChat() {
         try {
           await deleteAllChatHistory();
           setSessions([]);
-          setMessages([buildWelcomeMessage(currentInvoiceId, currentStoreName)]);
+          setMessages([buildWelcomeMessage(currentInvoiceId, currentStoreName, isDoc)]);
           setShowHistoryDrawer(false);
           showToast('Đã xóa toàn bộ lịch sử trò chuyện');
         } catch (err) {
@@ -295,13 +349,7 @@ export default function AIChat() {
     return Number(val).toLocaleString('vi-VN') + ' đ';
   };
 
-  const isSelectedDocForm =
-    selectedDetail?.invoice_type === 'Document/Form' ||
-    (currentInvoiceId &&
-      Number(selectedDetail?.total_amount || 0) === 0 &&
-      Array.isArray(selectedDetail?.items) &&
-      selectedDetail.items.length > 0 &&
-      selectedDetail.items.every((it) => Number(it.total_price || 0) === 0));
+  const isSelectedDocForm = checkIsDoc(currentInvoiceId, selectedDetail, invoices);
 
   const quickQuestions = currentInvoiceId
     ? isSelectedDocForm
@@ -392,7 +440,7 @@ export default function AIChat() {
               className="chat-invoice-select"
               style={{ width: '100%' }}
             >
-              <option value="">Tất cả hóa đơn ({invoices.length} chứng từ)</option>
+              <option value="">Tất cả chứng từ ({invoices.length} chứng từ)</option>
               {invoices.map((inv) => (
                 <option key={inv.invoice_id} value={inv.invoice_id}>
                   {inv.store_name || 'Cửa hàng'} — {inv.date || 'N/A'} (
@@ -443,7 +491,7 @@ export default function AIChat() {
                       type="button"
                       className="ai-zoom-btn"
                       onClick={() => navigate(`/history/${currentInvoiceId}`)}
-                      title="Xem chi tiết hóa đơn"
+                      title={isSelectedDocForm ? 'Xem chi tiết tài liệu' : 'Xem chi tiết hóa đơn'}
                     >
                       <ExternalLink size={14} strokeWidth={1.75} />
                     </button>
@@ -480,9 +528,13 @@ export default function AIChat() {
                     </div>
                   ) : (
                     <div className="ai-receipt-fallback">
-                      <Receipt size={32} strokeWidth={1.5} style={{ color: 'var(--primary)', marginBottom: '8px' }} />
+                      {isSelectedDocForm ? (
+                        <FileText size={32} strokeWidth={1.5} style={{ color: '#8b5cf6', marginBottom: '8px' }} />
+                      ) : (
+                        <Receipt size={32} strokeWidth={1.5} style={{ color: 'var(--primary)', marginBottom: '8px' }} />
+                      )}
                       <p style={{ fontWeight: 600, fontSize: '13.5px', color: 'var(--text-primary)', marginBottom: '4px' }}>
-                        {selectedDetail.store_name || 'Hóa đơn điện tử'}
+                        {selectedDetail.store_name || (isSelectedDocForm ? 'Tài liệu / Biểu mẫu điện tử' : 'Hóa đơn điện tử')}
                       </p>
                       <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                         {selectedDetail.raw_text
@@ -554,7 +606,7 @@ export default function AIChat() {
               <div className="ai-global-badge">
                 <Globe size={20} strokeWidth={1.75} />
                 <div>
-                  <h4>Chế độ tra cứu toàn bộ hóa đơn</h4>
+                  <h4>Chế độ tra cứu toàn bộ chứng từ</h4>
                   <p>AI đang tổng hợp dữ liệu trên tất cả chứng từ của bạn</p>
                 </div>
               </div>
@@ -562,7 +614,7 @@ export default function AIChat() {
               <div className="ai-global-stats">
                 <div className="ai-g-stat">
                   <span>Tổng số chứng từ</span>
-                  <strong>{invoices.length} hóa đơn</strong>
+                  <strong>{invoices.length} chứng từ</strong>
                 </div>
                 <div className="ai-g-stat">
                   <span>Tổng chi tiêu tích lũy</span>
@@ -571,12 +623,12 @@ export default function AIChat() {
               </div>
 
               <div className="ai-recent-pick-title">
-                Chọn nhanh một hóa đơn để xem ảnh gốc &amp; hỏi chi tiết:
+                Chọn nhanh một hóa đơn hoặc tài liệu để xem ảnh gốc &amp; hỏi chi tiết:
               </div>
               <div className="ai-recent-pick-list">
                 {invoices.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '24px 12px', color: 'var(--text-muted)', fontSize: '13px' }}>
-                    Chưa có hóa đơn nào trong hệ thống.
+                    Chưa có chứng từ nào trong hệ thống.
                   </div>
                 ) : (
                   invoices.slice(0, 6).map((inv) => (
@@ -589,7 +641,11 @@ export default function AIChat() {
                       }
                     >
                       <div className="ai-pick-icon">
-                        <Receipt size={16} strokeWidth={1.75} />
+                        {inv.invoice_type === 'Document/Form' ? (
+                          <FileText size={16} strokeWidth={1.75} style={{ color: '#8b5cf6' }} />
+                        ) : (
+                          <Receipt size={16} strokeWidth={1.75} />
+                        )}
                       </div>
                       <div className="ai-pick-info">
                         <strong>{inv.store_name || 'Cửa hàng'}</strong>
@@ -683,8 +739,10 @@ export default function AIChat() {
               className="chat-text-input"
               placeholder={
                 currentInvoiceId
-                  ? 'Nhập câu hỏi về hóa đơn này (mặt hàng, thuế, mã số thuế, số tiền...)...'
-                  : 'Nhập câu hỏi của bạn (VD: Tổng chi tiêu tháng này là bao nhiêu?)...'
+                  ? isSelectedDocForm
+                    ? 'Nhập câu hỏi về tài liệu này (nội dung, người thực hiện, ngày tháng, các mục chọn...)...'
+                    : 'Nhập câu hỏi về hóa đơn này (mặt hàng, thuế, mã số thuế, số tiền...)...'
+                  : 'Nhập câu hỏi của bạn (VD: Tổng chi tiêu tháng này, tìm tài liệu...)...'
               }
               value={input}
               onChange={(e) => setInput(e.target.value)}

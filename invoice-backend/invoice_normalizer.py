@@ -438,9 +438,9 @@ def normalize_invoice_extracted_data(parsed_json: dict, raw_text: str) -> dict:
     store_l = str(parsed_json.get("store_name") or "").lower()
 
     form_indicators = [
-        "form", "phiếu đăng ký", "phieu dang ky", "đơn đề nghị", "don de nghi",
+        "phiếu đăng ký", "phieu dang ky", "đơn đề nghị", "don de nghi",
         "phiếu thông tin", "biểu mẫu", "bieu mau", "compound", "investigator",
-        "signature", "application", "registration", "acute toxicity", "memorandum",
+        "application form", "registration form", "acute toxicity", "memorandum",
         "questionnaire", "route of administration", "checked [x]"
     ]
     all_items_zero_price = (
@@ -448,12 +448,23 @@ def normalize_invoice_extracted_data(parsed_json: dict, raw_text: str) -> dict:
         and len(normalized_items) > 0
         and all(float(i.get("total_price", 0.0) or 0.0) <= 0 for i in normalized_items)
     )
+    is_clearly_commercial_invoice = (
+        (total_amount > 0 or items_sum > 0)
+        and any(i.get("unit_price", 0.0) > 0 for i in normalized_items)
+    )
 
-    if (
-        raw_type == "Document/Form"
-        or any(k in store_l or k in combined_lower for k in form_indicators)
-        or all_items_zero_price
-    ):
+    if is_clearly_commercial_invoice and raw_type != "Document/Form":
+        is_form = False
+    elif raw_type == "Document/Form":
+        is_form = True
+    elif all_items_zero_price:
+        is_form = True
+    elif total_amount <= 0 and any(k in store_l or k in combined_lower for k in form_indicators):
+        is_form = True
+    else:
+        is_form = False
+
+    if is_form:
         parsed_json["invoice_type"] = "Document/Form"
     elif raw_type not in valid_types:
         if any(k in store_l or k in combined_lower for k in ["big c", "bigc", "winmart", "vinmart", "co.op", "coopmart", "aeon", "lotte", "circle k", "gs25", "familymart", "bách hóa xanh", "siêu thị"]):

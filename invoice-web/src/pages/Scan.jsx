@@ -589,7 +589,9 @@ export default function Scan() {
         setCropRect(DEFAULT_CROP_RECT);
         showToast('Phát hiện từ 2 hóa đơn trở lên trong ảnh! Hãy cắt lấy 1 hóa đơn rồi quét lại.', 'error');
       } else if (typeof detail === 'string' && detail.includes('đã tồn tại')) {
-        const match = detail.match(/mã(?: hóa đơn)?:?\s*([A-Za-z0-9_]+)/i);
+        const match =
+          detail.match(/(?:mã|mã hóa đơn|mã tài liệu|mã chứng từ)?:?\s*(INV_[A-Za-z0-9_]+)/i) ||
+          detail.match(/mã(?: hóa đơn| tài liệu)?:?\s*([A-Za-z0-9_]+)/i);
         scanRuntimeStore.duplicateAlert = {
           message: detail,
           existing_invoice_id: match ? match[1] : null,
@@ -1151,12 +1153,18 @@ export default function Scan() {
           </div>
           <div className="scan-dup-content">
             <div className="scan-dup-header">
-              <h4 className="scan-dup-title">Phát hiện hóa đơn trùng lặp</h4>
+              <h4 className="scan-dup-title">
+                {duplicateAlert.message?.toLowerCase().includes('tài liệu')
+                  ? 'Phát hiện tài liệu / biểu mẫu trùng lặp'
+                  : 'Phát hiện hóa đơn trùng lặp'}
+              </h4>
               <span className="scan-dup-badge">Đã tồn tại</span>
             </div>
             <p className="scan-dup-detail">{duplicateAlert.message}</p>
             <p className="scan-dup-hint">
-              Bạn có thể mở xem hóa đơn đã lưu trước đó, hoặc chọn <strong>Quét đè</strong> nếu muốn cập nhật lại dữ liệu mới.
+              {duplicateAlert.message?.toLowerCase().includes('tài liệu')
+                ? <>Bạn có thể mở xem tài liệu đã lưu trước đó, hoặc chọn <strong>Quét đè</strong> nếu muốn cập nhật lại dữ liệu mới.</>
+                : <>Bạn có thể mở xem hóa đơn đã lưu trước đó, hoặc chọn <strong>Quét đè</strong> nếu muốn cập nhật lại dữ liệu mới.</>}
             </p>
             <div className="scan-dup-actions">
               {duplicateAlert.existing_invoice_id && (
@@ -1167,7 +1175,9 @@ export default function Scan() {
                   onClick={() => navigate(`/history/${duplicateAlert.existing_invoice_id}`)}
                 >
                   <Eye size={15} strokeWidth={1.75} />
-                  Xem hóa đơn đã tồn tại
+                  {duplicateAlert.message?.toLowerCase().includes('tài liệu')
+                    ? 'Xem tài liệu đã tồn tại'
+                    : 'Xem hóa đơn đã tồn tại'}
                 </button>
               )}
               <button

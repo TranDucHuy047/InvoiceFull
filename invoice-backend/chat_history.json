@@ -526,5 +526,129 @@
         "content": "Dựa trên thông tin hóa đơn được cung cấp, không có dữ liệu về tên khách hàng, địa chỉ người mua hoặc số thẻ thành viên. Hóa đơn chỉ ghi nhận thông tin của cửa hàng (Big C Thăng Long, 222 Trần Duy Hưng, Cầu Giấy, Hà Nội)."
       }
     ]
+  },
+  "14": {
+    "INV_563597E0": [
+      {
+        "role": "user",
+        "content": "Tiêu đề chính của tài liệu này là gì và do đơn vị nào ban hành?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên tài liệu được cung cấp, thông tin về tiêu đề và đơn vị ban hành như sau:\n- **Tiêu đề chính của tài liệu:** **PHIẾU ĐĂNG KÝ ĐỀ TÀI KHÓA LUẬN TỐT NGHIỆP**.\n- **Đơn vị ban hành:** **TRƯỜNG ĐẠI HỌC CÔNG NGHỆ THÔNG TIN** (cụ thể là **PHÒNG ĐÀO TẠO & KHOA HỌC CÔNG NGHỆ**)."
+      },
+      {
+        "role": "user",
+        "content": "Mẫu số biểu mẫu và Mã hồ sơ trên tài liệu này là gì?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin từ tài liệu và hình ảnh chứng từ gốc, các thông tin bạn yêu cầu được xác định như sau:\n- **Mẫu số biểu mẫu:** **BM-04/ĐK-KLTN**\n- **Mã hồ sơ:** **HS-2026-0842**"
+      },
+      {
+        "role": "user",
+        "content": "Người đăng ký trong tài liệu tên là gì, ngày sinh và mã số sinh viên là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin từ tài liệu \"Phiếu đăng ký đề tài khóa luận tốt nghiệp\" mà bạn đã cung cấp, thông tin về người đăng ký như sau:\n- **Họ và tên người đăng ký:** Trần Đức Huy\n- **Ngày sinh:** 15/08/2004\n- **Mã số sinh viên:** 22520471"
+      },
+      {
+        "role": "user",
+        "content": "Sinh viên đăng ký thuộc lớp/khóa nào, khoa nào và hệ đào tạo gì?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin từ tài liệu \"Phiếu đăng ký đề tài khóa luận tốt nghiệp\", thông tin về sinh viên đăng ký như sau:\n- **Lớp / Khóa:** **KTPM2022 - Khóa 17**\n- **Khoa / Bộ môn:** **Kỹ thuật Phần mềm**\n- **Hệ đào tạo:** **Đại học Chính quy**"
+      },
+      {
+        "role": "user",
+        "content": "Số điện thoại liên hệ và địa chỉ email của người đăng ký là gì?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin từ tài liệu **Phiếu đăng ký đề tài khóa luận tốt nghiệp**, thông tin liên hệ của người đăng ký (sinh viên **Trần Đức Huy**) như sau:\n- **Số điện thoại liên hệ:** **0908 456 789**\n- **Email:** **huybachuc11@gmail.com**"
+      },
+      {
+        "role": "user",
+        "content": "Địa chỉ liên hệ được ghi trong tài liệu là ở đâu?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin trích xuất từ tài liệu \"Phiếu đăng ký đề tài khóa luận tốt nghiệp\", **địa chỉ liên hệ** của người đăng ký được ghi cụ thể là:\n- **Địa chỉ liên hệ:** **514A Lê Trọng Tấn, Quận Tân Phú, TP. Hồ Chí Minh**."
+      },
+      {
+        "role": "user",
+        "content": "Tên đề tài đăng ký khóa luận tốt nghiệp trong phiếu là gì?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin từ phiếu đăng ký đề tài khóa luận tốt nghiệp, tên đề tài mà sinh viên Trần Đức Huy đã đăng ký là:\n**\"Hệ thống Hỏi đáp Hóa đơn và Tài liệu Thông minh tích hợp Multimodal RAG\"**"
+      },
+      {
+        "role": "user",
+        "content": "Giảng viên hướng dẫn là ai và ngày đăng ký trên phiếu là ngày nào?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin từ tài liệu **Phiếu đăng ký đề tài khóa luận tốt nghiệp** mà bạn đã cung cấp, thông tin chi tiết như sau:\n- **Giảng viên hướng dẫn:** **TS. Nguyễn Thị Hồng Loan**\n- **Ngày đăng ký:** **10/11/2026**"
+      },
+      {
+        "role": "user",
+        "content": "Bộ dữ liệu sử dụng và thời gian thực hiện đề tài được ghi như thế nào?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin từ tài liệu \"Phiếu đăng ký đề tài khóa luận tốt nghiệp\" mà bạn đã cung cấp, thông tin về bộ dữ liệu và thời gian thực hiện đề tài được ghi nhận như sau:\n- **Bộ dữ liệu sử dụng:** **SROIE (Hóa đơn) & FUNSD (Biểu mẫu)**\n- **Thời gian thực hiện:** **09/2026 - 12/2026**"
+      },
+      {
+        "role": "user",
+        "content": "Ở mục Lĩnh vực đề tài, ô nào được đánh dấu chọn (X) và những ô nào không được chọn?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin từ tài liệu và hình ảnh đính kèm, tại mục **III. Lĩnh vực nghiên cứu**, kết quả đánh dấu chọn như sau:\n- **Ô được đánh dấu chọn (X):**\n- **Trí tuệ nhân tạo & OCR**\n- **Các ô không được chọn:**\n- **Mạng máy tính**\n- **An toàn thông tin**"
+      },
+      {
+        "role": "user",
+        "content": "Trong biểu mẫu có tất cả những mục nào được đánh dấu chọn (X)?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên thông tin trích xuất từ tài liệu và hình ảnh đính kèm, các mục được đánh dấu chọn **[X]** trong biểu mẫu bao gồm:\n- **Lĩnh vực đề tài:** **Trí tuệ nhân tạo & OCR**\n- **Hình thức thực hiện:** **Ứng dụng Web Full-Stack**\n- **Tình trạng phê duyệt:** **Đã duyệt đề cương**"
+      },
+      {
+        "role": "user",
+        "content": "Ai là người ký tên ở mục Sinh viên đăng ký và trên mặt tài liệu có đóng dấu mộc gì không?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên tài liệu và hình ảnh chứng từ gốc đính kèm, thông tin chi tiết cho câu hỏi của bạn như sau:\n- **Người ký tên ở mục Sinh viên đăng ký:** Sinh viên **Trần Đức Huy** (với chữ ký là **Huy**).\n- **Con dấu trên mặt tài liệu:** Trên tài liệu có đóng dấu mộc đỏ xác nhận **ĐÃ DUYỆT HỒ SƠ - PHÒNG ĐÀO TẠO - 2026**."
+      },
+      {
+        "role": "user",
+        "content": "Điểm số khóa luận tốt nghiệp hoặc số tiền lệ phí ghi trên phiếu đăng ký này là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa trên hình ảnh và thông tin chi tiết của **Phiếu đăng ký đề tài khóa luận tốt nghiệp**, tài liệu này **không ghi nhận** điểm số khóa luận tốt nghiệp hay số tiền lệ phí nào.\nPhiếu này chỉ cung cấp các thông tin hành chính và chuyên môn sau:\n- **Thông tin sinh viên:** Họ và tên (**Trần Đức Huy**), Mã số sinh viên (**22520471**), Lớp (**KTPM2022 - Khóa 17**), Khoa (**Kỹ thuật Phần mềm**),...\n- **Thông tin đề tài:** Tên đề tài (**Hệ thống Hỏi đáp Hóa đơn và Tài liệu Thông minh tích hợp Multimodal RAG**), Giảng viên hướng dẫn (**TS. Nguyễn Thị Hồng Loan**),...\n- **Tình trạng phê duyệt:** Đã được đóng dấu và ghi nhận ở trạng thái **Đã duyệt đề cương** (hoặc Đã duyệt hồ sơ)."
+      },
+      {
+        "role": "user",
+        "content": "Tiêu đề của biểu mẫu này là gì và hợp chất (Compound) nào được thử nghiệm?"
+      },
+      {
+        "role": "bot",
+        "content": "Dựa vào tài liệu đính kèm, dưới đây là thông tin chi tiết để trả lời câu hỏi của bạn:\n- **Tiêu đề của biểu mẫu:** **PHIẾU ĐĂNG KÝ ĐỀ TÀI KHÓA LUẬN TỐT NGHIỆP** (thuộc **TRƯỜNG ĐẠI HỌC CÔNG NGHỆ THÔNG TIN**).\n- **Hợp chất (Compound) hoặc chủ đề thử nghiệm:** Biểu mẫu này không liên quan đến việc thử nghiệm hợp chất hóa học hay dược chất. Đây là biểu mẫu đăng ký đề tài khóa luận tốt nghiệp sinh viên, với tên đề tài cụ thể là: **Hệ thống Hỏi đáp Hóa đơn và Tài liệu Thông minh tích hợp Multimodal RAG** (thuộc lĩnh vực **Trí tuệ nhân tạo & OCR**)."
+      },
+      {
+        "role": "user",
+        "content": "Điểm số khóa luận tốt nghiệp hoặc số tiền lệ phí ghi trên phiếu đăng ký này là bao nhiêu?"
+      },
+      {
+        "role": "bot",
+        "content": "Trên tài liệu này không ghi nhận thông tin về điểm số khóa luận tốt nghiệp hay số tiền lệ phí."
+      }
+    ]
   }
 }
